@@ -1,14 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include "Trie.h"
-#include "../Utils/ErrorHandler.h"
-
-#define FIRST_LETTER 'a'
+#include "../Utility/Utility.h"
 
 static TrieNode* createTrieNode()
 {
@@ -41,6 +37,17 @@ static TrieNode* addLeaf(TrieNode* node, char letter)
     return NULL;
 }
 
+void freeTrie(TrieNode* head) //Funzione per liberare lo spazio allocato
+{
+    if(head == NULL) return;
+    for(int i=0; i<TOTAL_LETTERS; i++)
+    {
+        if(head->nextLetters[i] != NULL) freeTrie(head->nextLetters[i]); //Ricorsiva per liberare lo spazio più interno all'albero
+    }
+    free(head);
+}
+
+
 bool findWord(TrieNode* head, const char* word, int currentIndex)
 {
     if(currentIndex == strlen(word)) //Se sto alla fine della parola, controllo la flag wordEnd e ritorno il suo valore (true se parola trovata)
@@ -56,17 +63,11 @@ bool findWord(TrieNode* head, const char* word, int currentIndex)
 TrieNode* loadDictionary(const char* path)
 {
     int retvalue, fd;
-    struct stat statbuf;
 
     //Controllo che il file esista e che sia di tipo corretto
-    SYSC(retvalue, stat(path,  &statbuf), "Errore lettura file, file non esistente");
-    if(!S_ISREG(statbuf.st_mode))
-    {
-        printf("Errore nel tipo del file dizionario");
-        exit(EXIT_FAILURE);
-    }
+    if(!regularFileExists(path)) exitMessage("File dizionario non esistente o di formato non corretto");
 
-    //Apro il file dizionario in lettura
+    //Apro il file dizionario in lettura con una chiamata di sistema
     SYSC(fd, open(path, O_RDONLY), "Errore nell'apertura del file dizionario");
 
     TrieNode* head = createTrieNode(); //Creo il puntatore al root node del Trie
@@ -82,12 +83,19 @@ TrieNode* loadDictionary(const char* path)
         }
 
         currentPointer = addLeaf(currentPointer, newLetter); //Provo ad aggiungere una foglia se non esiste la lettera corrispondente
-        if(currentPointer == NULL) //Lettura lettera non valida e chiudo il programma
+        if(currentPointer == NULL) //Lettura lettera non valida, elimino il Trie e esco dal ciclo
         {
-            printf("Errore lettura del file, lettera non valida: %c", newLetter);
-            exit(EXIT_FAILURE);
+            freeTrie(head);
+            head = NULL;
+            break;
         }
     }
+
+    //Chiudo il file con una chiamata di sistema
+    SYSC(retvalue, close(fd), "Errore nella chiusura del file dizionario");
+
+    //Errore nel salvataggio del puntatore al dizionario, chiudo il programma
+    if(head == NULL) exitMessage("Errore nel salvataggio del dizionario");
 
     return head;
 }
