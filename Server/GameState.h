@@ -1,6 +1,6 @@
 #include <stdbool.h>
 #include "../Utility/Utility.h"
-#define MAX_CLIENTS 32
+#define MAX_CLIENTS 1
 
 //Enum per salvare la scelta della generazione della matrice
 enum MatrixGen

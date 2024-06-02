@@ -12,7 +12,6 @@
 
 #define ADDR_INDEX 1
 #define PORT_INDEX 2
-#define MAX_INPUT_BUFF 50
 
 #define HELP_IN 'h'
 #define REGISTER_IN 'r'
@@ -21,7 +20,9 @@
 #define END_IN 'q'
 #define UNKNOWN_IN '?'
 
-char decodeInput(const char* string);
+bool decodeInput(char* string, char* cmd, char** arg);
+void printMatrix(char** matrix);
+void receiveMatrix(int fd);
 
 int main(int argc, char** argv)
 {
@@ -31,15 +32,15 @@ int main(int argc, char** argv)
     int port;
     if(!validatePort(argv[PORT_INDEX], &port)) exitMessage("Numero di porta non corretto"); //Controllo con una funzione se la porta inserita è valida, se non lo è interrompo
 
-    int client_fd, ret;
+    int client_fd;
     struct sockaddr_in server_addr;
-    SYSC(client_fd, socket(AF_INET, SOCK_STREAM, 0), "Nella socket");
+    SYSC(client_fd, socket(AF_INET, SOCK_STREAM, 0), "Errore nella creazione del socket client");
 
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(port);
     server_addr.sin_addr.s_addr = inet_addr(addr);
 
-    SYSC(ret, connect(client_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)), "nella connect");
+    SYSCALL(connect(client_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)), "Errore nella connessione con il server");
 
     bool bRegistered = false;
     bool bGameGoing = true;
@@ -47,87 +48,120 @@ int main(int argc, char** argv)
     {
         char* input;
         size_t line_size;
-        int n_read, msg_size;
+
+        printf("\n[PROMPT PAROLIERE]-->");
         getline(&input, &line_size, stdin);
 
-        char* trimmed = strtok(input, "\n"); //Rimuovo lo \n salvato nel buffer da getline
-        char* token = strtok(trimmed, " "); //Divido la stringa tra parole
-
-        char cmd = decodeInput(token); //La prima parola corrisponde al comando e lo decodifico in un char per usarlo nello switch
-
-        char* arg = strtok(NULL, " "); //Prendo il parametro
-        if(arg != NULL && (cmd != REGISTER_IN && cmd != WORD_IN)) //Se ci sono parametri e non sta eseguendo un comando che non li prevede ricomincia
+        char cmd;
+        char* arg;
+        if(!decodeInput(input, &cmd, &arg))
         {
-            printf("Errore 1\n");
-            continue;
-        }
-        if(arg == NULL && (cmd == REGISTER_IN || cmd == WORD_IN)) //Se NON ci sono parametri e sta eseguendo un comando che li prevede ricomincia
-        {
-            printf("Errore 2\n");
-            continue;
-        }
-        if(arg != NULL && strtok(NULL, " ") != NULL) //Se ci sono parametri e ne trova un'altro non troppi e ricomincia
-        {
-            printf("Errore 3\n");
+            printf("Comando non valido, scrivi aiuto per sapere i comandi possibili\n");
             continue;
         }
 
         switch (cmd) {
             case HELP_IN:
             {
-                printf("Manda i comandi\n");
+                printf("aiuto\nregistra_utente nome\nmatrice\np parola\nfine\n");
                 break;
             }
             case REGISTER_IN:
             {
-                void *out;
-                msg_size = buildTextMsg(&out, MSG_REGISTRA_UTENTE, arg);
-                SYSC(n_read, write(client_fd, out, msg_size), "Nella write");
+                printf("Richiesta registrazione in corso...\n");
+                sendTextMessage(client_fd, MSG_REGISTRA_UTENTE, arg);
 
-                Message msg;
-                SYSC(n_read, read(client_fd, &msg.length, sizeof(int)), "Nella write");
-                SYSC(n_read, read(client_fd, &msg.type, sizeof(char)), "Nella write");
-                if(msg.length > 0) SYSC(n_read, read(client_fd, &msg.data, msg.length), "Nella write");
-
-
-                if(msg.type == MSG_ERR) printf("Errore nella registrazione, prova con un altro nome");
-                else {
-                    printf("Utente registrato");
+                Message* msg = readMessage(client_fd);
+                if(msg->type == MSG_ERR) printf("Errore nella registrazione, prova con un altro nome\n");
+                else{
+                    printf("Registrazione avvenuta!\n");
                     bRegistered = true;
+                    receiveMatrix(client_fd);
                 }
-
+                free(msg);
                 break;
             }
             case MATRIX_IN:
-                if(!bRegistered) continue;
+                if(!bRegistered)
+                {
+                    printf("Devi registrarti prima di poter eseguire questo comando\n");
+                    continue;
+                }
+                sendTextMessage(client_fd, MSG_MATRICE, NULL);
+                receiveMatrix(client_fd);
                 break;
             case WORD_IN:
-                if(!bRegistered) continue;
+                if(!bRegistered)
+                {
+                    printf("Devi registrarti prima di poter eseguire questo comando\n");
+                    continue;
+                }
+                printf("Parola inserita: %s\n", arg);
                 break;
             case END_IN:
             {
-                void *out;
-                msg_size = buildTextMsg(&out, MSG_CLOSE_CLIENT, NULL);
-                SYSC(n_read, write(client_fd, out, msg_size), "Nella write");
+                sendTextMessage(client_fd, MSG_CLOSE_CLIENT, NULL);
                 bGameGoing = false;
                 break;
             }
             default:
-                //Err
+                printf("Comando non valido, scrivi aiuto per sapere i comandi possibili\n");
                 break;
         }
     }
 
-    SYSC(ret, close(client_fd), "Nella close");
+    SYSCALL(close(client_fd), "Errore nella chiusura del socket client");
 }
 
-
-char decodeInput(const char* string)
+bool decodeInput(char* string, char* cmd, char** arg)
 {
-    if(strcmp(string, "aiuto") == 0) return HELP_IN;
-    if(strcmp(string, "registra_utente") == 0) return REGISTER_IN;
-    if(strcmp(string, "matrice") == 0) return MATRIX_IN;
-    if(strcmp(string, "p") == 0) return WORD_IN;
-    if(strcmp(string, "fine") == 0) return END_IN;
-    return UNKNOWN_IN;
+    char* trimmed = strtok(string, "\n"); //Rimuovo lo \n salvato nel buffer da getline
+    char* command = strtok(trimmed, " "); //Divido la stringa tra parole
+
+    //La prima parola corrisponde al comando e lo decodifico in un char per usarlo nello switch
+    char c = UNKNOWN_IN;
+    if(strcmp(command, "aiuto") == 0) c = HELP_IN;
+    else if(strcmp(command, "registra_utente") == 0) c = REGISTER_IN;
+    else if(strcmp(command, "matrice") == 0) c = MATRIX_IN;
+    else if(strcmp(command, "p") == 0) c = WORD_IN;
+    else if(strcmp(command, "fine") == 0) c = END_IN;
+
+    *cmd = c;
+    *arg = strtok(NULL, " "); //Prendo il parametro
+
+    //Se ci sono parametri e non sta eseguendo un comando che non li prevede ricomincia
+    if(*arg != NULL && (c != REGISTER_IN && c != WORD_IN)) return false;
+    //Se NON ci sono parametri e sta eseguendo un comando che li prevede ricomincia
+    if(*arg == NULL && (c == REGISTER_IN || c == WORD_IN)) return false;
+    //Se ci sono parametri e ne trova un'altro non troppi e ricomincia
+    if(*arg != NULL && strtok(NULL, " ") != NULL) return false;
+
+    return true;
+}
+
+void printMatrix(char** matrix)
+{
+    for(int i=0; i<MATRIX_SIZE; i++)
+    {
+        for(int j=0; j<MATRIX_SIZE; j++)
+        {
+            if(matrix[i][j] == 'q') printf("Qu");
+            else printf("%c ", matrix[i][j]);
+        }
+        printf("\n");
+    }
+}
+
+void receiveMatrix(int fd)
+{
+    Message* msg = readMessage(fd);
+    if(msg->type == MSG_MATRICE){
+        printMatrix(getMatrix(msg->data));
+        free(msg);
+        msg = readMessage(fd);
+        if(msg->type == MSG_TEMPO_PARTITA) printf("Tempo rimanente: %ld", getNumber(msg->data));
+    }
+    else if(msg->type == MSG_TEMPO_ATTESA) printf("Tempo attesa: %ld", getNumber(msg->data));
+    else printf("Errore nella ricezione della matrice, prova ad usare il comando apposito");
+    free(msg);
 }

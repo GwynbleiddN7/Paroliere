@@ -70,7 +70,6 @@ TrieNode* loadDictionary(const char* path)
     SYSC(fd, open(path, O_RDONLY), "Errore nell'apertura del file dizionario");
 
     TrieNode* head = createTrieNode(); //Creo il puntatore al root node del Trie
-
     TrieNode* currentPointer = head;
     char newLetter;
     while( (retvalue = read(fd, &newLetter, sizeof(char))) ) //Leggo una lettera alla volta e aggiorno l'albero
@@ -91,7 +90,7 @@ TrieNode* loadDictionary(const char* path)
     }
 
     //Chiudo il file con una chiamata di sistema
-    SYSC(retvalue, close(fd), "Errore nella chiusura del file dizionario");
+    SYSCALL(close(fd), "Errore nella chiusura del file dizionario");
 
     //Errore nel salvataggio del puntatore al dizionario, chiudo il programma
     if(head == NULL) exitMessage("Errore nel salvataggio del dizionario");

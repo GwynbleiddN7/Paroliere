@@ -32,6 +32,8 @@ static struct option long_options[] =
 static void getOptionalParameters(int argc, char** argv);
 static void* start_server();
 static void* handle_player(void* playerArg);
+void exitThread(Message* msg, Player* player);
+void sendMatrix(Player* player);
 
 static GameInfo* gameInfo;
 
@@ -92,7 +94,7 @@ void getOptionalParameters(int argc, char** argv)
 }
 
 void* start_server() {
-    int server_fd, retvalue;
+    int server_fd;
     struct sockaddr_in server_addr, client_addr;
 
     SYSC(server_fd, socket(AF_INET, SOCK_STREAM, 0), "Nella socket");
@@ -112,8 +114,8 @@ void* start_server() {
     server_addr.sin_port = htons(gameInfo->serverPort);
     server_addr.sin_addr.s_addr = inet_addr(gameInfo->serverName);
 
-    SYSC(retvalue, bind(server_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)), "Nella bind");
-    SYSC(retvalue, listen(server_fd, MAX_CLIENTS), "Nella listen");
+    SYSCALL(bind(server_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)), "Nella bind");
+    SYSCALL(listen(server_fd, MAX_CLIENTS), "Nella listen");
 
     socklen_t client_addr_len = sizeof(client_addr);
 
@@ -129,15 +131,7 @@ void* start_server() {
     //Handler chiusura clients/join
 
 
-    SYSC(retvalue, close(server_fd), "Errore nella chiusura del server");
-}
-
-void sendErrorMSG(int fd)
-{
-    int res;
-    void* msg = NULL;
-    int size = buildTextMsg(msg, MSG_ERR, NULL);
-    SYSC(res, write(fd, msg, size), "Errore nell'invio di un errore");
+    SYSCALL(close(server_fd), "Errore nella chiusura del server");
 }
 
 pthread_mutex_t players_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -162,70 +156,107 @@ void addPlayerToGame(Player* player)
     pthread_mutex_unlock(&players_mutex);
 }
 
+void removePlayerFromGame(Player* player)
+{
+    pthread_mutex_lock(&players_mutex);
+
+    if (gameInfo->currentSession->numPlayers == 0) return;
+
+    for(int i=0; i<MAX_CLIENTS; i++)
+    {
+        if(gameInfo->currentSession->players[i] != NULL)
+        {
+            if(gameInfo->currentSession->players[i]->name == player->name)
+            {
+                free(player);
+                gameInfo->currentSession->numPlayers--;
+                gameInfo->currentSession->players[i] = NULL;
+                pthread_cond_signal(&players_not_full);
+                break;
+            }
+        }
+    }
+    pthread_mutex_unlock(&players_mutex);
+}
+
 void* handle_player(void* playerArg)
 {
     Player* player = (Player*) playerArg;
+    bool userRegistered;
 
-    int n_read, res, msg_size;
-    Message msg;
     do{
-        SYSC(n_read, read(player->socket_fd, &msg.length, sizeof(int)), "Nella read");
-        SYSC(n_read, read(player->socket_fd, &msg.type, sizeof(char)), "Nella read");
-        if(msg.length > 0) SYSC(n_read, read(player->socket_fd, &msg.data, msg.length), "Nella read");
+        Message* msg = readMessage(player->socket_fd);
 
-        switch(msg.type)
+        switch(msg->type)
         {
             case MSG_REGISTRA_UTENTE:
-                for(int i=0; i<MAX_CLIENTS; i++)
-                {
-                    if(gameInfo->currentSession->players[i] != NULL)
-                    {
-                        if(strcmp(gameInfo->currentSession->players[i]->name, msg.data) == 0){
-                            sendErrorMSG(player->socket_fd);
-                            continue;
+            {
+                bool foundUsername = false;
+                for (int i = 0; i < MAX_CLIENTS; i++) {
+                    if (gameInfo->currentSession->players[i] != NULL) {
+                        if (strcmp(gameInfo->currentSession->players[i]->name, msg->data) == 0) {
+                            sendTextMessage(player->socket_fd, MSG_ERR, NULL);
+                            foundUsername = true;
                         }
                     }
                 }
+                if(!foundUsername){
+                    copyString(&player->name, msg->data);
+                    userRegistered = true;
+                }
+                free(msg);
                 break;
+            }
             case MSG_CLOSE_CLIENT:
-                free(player);
-                SYSC(res, close(player->socket_fd), "Errore nella chiusura del client");
-                return NULL;
+                exitThread(msg, player);
+                pthread_exit(NULL);
             default:
-                sendErrorMSG(player->socket_fd);
+                free(msg);
+                sendTextMessage(player->socket_fd, MSG_ERR, NULL);
                 break;
         }
-    } while(msg.type != MSG_REGISTRA_UTENTE);
-
-    copyString(&player->name, msg.data);
+    } while(!userRegistered);
 
     addPlayerToGame(player);
+    sendTextMessage(player->socket_fd, MSG_OK, NULL);
+    sendMatrix(player);
 
-    void* okMsg;
-    msg_size = buildTextMsg(&okMsg, MSG_OK, NULL);
-    SYSC(res, write(player->socket_fd, okMsg, msg_size), "Errore nell'invio di un OK");
+    while(true)
+    {
+        Message* msg = readMessage(player->socket_fd);
 
-    printf("Utente registrato con il nome %s", player->name);
+        switch(msg->type)
+        {
+            case MSG_PAROLA:
+                break;
+            case MSG_MATRICE:
+                sendMatrix(player);
+                break;
+            case MSG_CLOSE_CLIENT:
+                exitThread(msg, player);
+                pthread_exit(NULL);
+            default:
+                sendTextMessage(player->socket_fd, MSG_ERR, NULL);
+                break;
+        }
 
-    void* matrixMsg;
-    msg_size = buildTextMsg(&matrixMsg, MSG_MATRICE, gameInfo->currentSession->currentMatrix);
-    SYSC(res, write(player->socket_fd, matrixMsg, msg_size), "Errore nell'invio della matrice");
+        free(msg);
+    }
+}
 
-    void* timeMsg;
+void sendMatrix(Player* player)
+{
     if(gameInfo->currentSession->bIsPaused)
-    {
-        msg_size = buildNumMsg(&timeMsg, MSG_TEMPO_ATTESA, 5);
-        SYSC(res, write(player->socket_fd, timeMsg, msg_size), "Errore nell'invio della matrice");
+        sendNumMessage(player->socket_fd, MSG_TEMPO_ATTESA, 6);
+    else{
+        sendTextMessage(player->socket_fd, MSG_MATRICE, gameInfo->currentSession->currentMatrix);
+        sendNumMessage(player->socket_fd, MSG_TEMPO_PARTITA, 3);
     }
-    else
-    {
-        msg_size = buildNumMsg(&timeMsg, MSG_TEMPO_PARTITA, 6);
-        SYSC(res, write(player->socket_fd, timeMsg, msg_size), "Errore nell'invio della matrice");
-    }
+}
 
-    //Game Loop
-
-
-    SYSC(res, close(player->socket_fd), "Errore nella chiusura di un client");
-    pthread_exit(NULL);
+void exitThread(Message* msg, Player* player)
+{
+    if(msg != NULL) free(msg);
+    SYSCALL(close(player->socket_fd), "Errore nella chiusura del client");
+    removePlayerFromGame(player);
 }

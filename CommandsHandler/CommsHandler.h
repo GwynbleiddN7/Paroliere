@@ -16,8 +16,8 @@ typedef struct{
     char data[];
 } Message;
 
-int buildTextMsg(void** out, char type, const void* data);
-int buildNumMsg(void** out, char type, long num);
-char* getMessage(Message* message);
-char** getMatrix(Message* message);
-long getNumber(Message* message);
+void sendTextMessage(int fd, char type, const void* data);
+void sendNumMessage(int fd, char type, long message);
+Message* readMessage(int fd);
+char** getMatrix(const char* data);
+long getNumber(const char* data);

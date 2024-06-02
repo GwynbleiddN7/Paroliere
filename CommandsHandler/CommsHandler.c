@@ -1,5 +1,8 @@
+#include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
+#include <errno.h>
 #include "CommsHandler.h"
 #include "../Utility/Utility.h"
 
@@ -33,34 +36,47 @@ int buildNumMsg(void** out, const char type, long num)
     return length; //Ritorno la dimensione effettiva del messaggio
 }
 
-char* getMessage(Message* message)
-{
-    char* msg;
-    copyString(&msg, message->data);
-    return msg;
-}
-
-char** getMatrix(Message* message)
+char** getMatrix(const char* data)
 {
     char** matrix = (char**) malloc(MATRIX_SIZE * sizeof(char*));
 
-    if(message->length == sizeof(char)*16)
+    for(int i=0; i < MATRIX_SIZE; i++)
     {
-        for(int i=0; i < MATRIX_SIZE; i++)
+        matrix[i] = (char*) malloc(MATRIX_SIZE * sizeof(char));
+        for(int j=0; j < MATRIX_SIZE; j++)
         {
-            matrix[i] = (char*) malloc(MATRIX_SIZE * sizeof(char));
-            for(int j=0; j < MATRIX_SIZE; j++)
-            {
-                matrix[i][j] = message->data[i * MATRIX_SIZE + j];
-            }
+            matrix[i][j] = data[i * MATRIX_SIZE + j];
         }
-        return matrix;
     }
-    else return NULL;
+    return matrix;
 }
 
-long getNumber(Message* message)
+long getNumber(const char* data)
 {
-    if(message->length == sizeof(long)) return *(long*)(message->data);
-    else return 0;
+    return *(long*)(data);
+}
+
+void sendTextMessage(int fd, const char type, const void* data)
+{
+    void* msg;
+    int msg_size = buildTextMsg(&msg, type, data);
+    SYSCALL(write(fd, msg, msg_size), "Errore nell'invio di un messaggio");
+}
+
+void sendNumMessage(int fd, char type, long message)
+{
+    void* msg;
+    int msg_size = buildNumMsg(&msg, type, message);
+    SYSCALL(write(fd, msg, msg_size), "Errore nell'invio di un messaggio");
+}
+
+Message* readMessage(int fd)
+{
+    int size;
+    SYSCALL(read(fd, &size, sizeof(int)), "Errore nella lettura di un messaggio");
+    Message* msg = malloc(size + sizeof(int) + sizeof(char));
+    msg->length = size;
+    SYSCALL(read(fd, &msg->type, sizeof(char)), "Errore nella lettura di un messaggio");
+    if(msg->length > 0) SYSCALL(read(fd, &msg->data, msg->length), "Errore nella lettura di un messaggio");
+    return msg;
 }
