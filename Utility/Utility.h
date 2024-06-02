@@ -3,6 +3,8 @@
 
 #define FIRST_LETTER 'a'
 #define TOTAL_LETTERS 26
+#define PLAYER_NAME_SIZE 10
+#define MATRIX_SIZE 4
 
 //Controllo distruttivo per chiamate di sistema che ritornano -1 come errore
 #define SYSC(v,c,m) if((v=c)==-1){ perror(m); exit(errno); }

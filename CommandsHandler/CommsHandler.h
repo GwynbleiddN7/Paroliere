@@ -7,13 +7,17 @@
 #define MSG_PAROLA 'W'
 #define MSG_PUNTI_FINALI 'F'
 #define MSG_PUNTI_PAROLA 'P'
+#define MSG_CLOSE_CLIENT 'C'
 
 //Struttura messaggio
 typedef struct{
     unsigned int length;
     char type;
-    char* data;
+    char data[];
 } Message;
 
-int buildMessage(void** out, char type, const char* data); //Funzione per creare il messaggio
-char* getData(void* msg);  //MIGHT NOT NEED THIS!
+int buildTextMsg(void** out, char type, const void* data);
+int buildNumMsg(void** out, char type, long num);
+char* getMessage(Message* message);
+char** getMatrix(Message* message);
+long getNumber(Message* message);

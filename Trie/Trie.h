@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include "../Utility/Utility.h"
 
 //Struttura Trie dizionario
 typedef struct TrieNode{

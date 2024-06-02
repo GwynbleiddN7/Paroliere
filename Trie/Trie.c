@@ -4,7 +4,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include "Trie.h"
-#include "../Utility/Utility.h"
 
 static TrieNode* createTrieNode()
 {

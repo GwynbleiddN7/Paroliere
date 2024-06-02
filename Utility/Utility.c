@@ -23,7 +23,7 @@ void exitMessage(char* message)
 void copyString(char** dest, char* src)
 {
     if(*dest != NULL) free(*dest); //Libero la memoria in caso non fosse NULL
-    *dest = malloc(sizeof(src)); //Alloco lo spazio per la nuova stringa
+    *dest = malloc(strlen(src)); //Alloco lo spazio per la nuova stringa
     strcpy(*dest, src); //Copio la stringa
 }
 
