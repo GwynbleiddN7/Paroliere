@@ -217,11 +217,11 @@ void* read_buffer(void* arg) //Funzione thread per leggere il buffer dal server
                 break;
             }
             case MSG_TEMPO_PARTITA:
-                printf("Tempo rimanente: %ld\n", getNumber(msg->data)); //Stampo il tempo rimanente
+                printf("Tempo rimanente alla fine della partita: %ld\n", getNumber(msg->data)); //Stampo il tempo rimanente
                 pthread_cond_signal(&output_available);
                 break;
             case MSG_TEMPO_ATTESA:
-                printf("Tempo attesa: %ld\n", getNumber(msg->data)); //Il gioco è in pausa quindi trovo il tempo di attesa e lo stampo
+                printf("Il gioco è in pausa\nTempo di attesa per la prossima partita: %ld\n", getNumber(msg->data)); //Il gioco è in pausa quindi trovo il tempo di attesa e lo stampo
                 pthread_cond_signal(&output_available);
                 break;
             case MSG_MATRICE:

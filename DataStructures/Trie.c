@@ -6,7 +6,7 @@
 #include <ctype.h>
 #include "Trie.h"
 
-TrieNode* createTrieNode() //Funzione per creare un nodo
+TrieNode* createTrie() //Funzione per creare un nodo
 {
     //Alloco lo spazio per un nuovo nodo e lo inizializzo
     TrieNode* node = malloc(sizeof(TrieNode));
@@ -31,7 +31,7 @@ static TrieNode* addLeaf(TrieNode* node, char letter) //Funzione per provare ad 
 
     int asciiDiff = letter - FIRST_LETTER; //Calcolo offset relativo della lettera
     //Alloco lo spazio per una nuova lettera e ritorno il puntatore
-    if(node->nextLetters[asciiDiff] == NULL) node->nextLetters[asciiDiff] = createTrieNode();
+    if(node->nextLetters[asciiDiff] == NULL) node->nextLetters[asciiDiff] = createTrie();
     return node->nextLetters[asciiDiff];
 }
 
@@ -46,7 +46,7 @@ void freeTrie(TrieNode* head) //Funzione per liberare la memoria occupata dal Tr
 }
 
 
-bool findWord(TrieNode* head, const char* word, int currentIndex) //Funzione per verificare la presenza di una parola
+bool findInTrie(TrieNode* head, const char* word, int currentIndex) //Funzione per verificare la presenza di una parola
 {
     if(currentIndex == strlen(word)) //Se sto alla fine della parola, controllo la flag wordEnd e ritorno il suo valore (true se parola trovata)
     {
@@ -54,7 +54,7 @@ bool findWord(TrieNode* head, const char* word, int currentIndex) //Funzione per
         else return false;
     }
     TrieNode* node = findLetter(head, word[currentIndex]); //Cerco la lettera all'interno del nodo corrente head
-    if(node != NULL) return findWord(node, word, currentIndex+1); //Avanzo ricorsivamente nell'albero se ho trovato la lettera
+    if(node != NULL) return findInTrie(node, word, currentIndex+1); //Avanzo ricorsivamente nell'albero se ho trovato la lettera
     else return false; //Altrimenti la parola non è presente e ritorno false
 }
 
@@ -68,7 +68,7 @@ TrieNode* loadDictionary(const char* path) //Funzione per caricare il dizionario
     //Apro il file dizionario in lettura con una chiamata di sistema
     if(syscall_fails_get(fd, open(path, O_RDONLY))) return NULL;
 
-    TrieNode* head = createTrieNode(); //Creo il puntatore al root node del Trie
+    TrieNode* head = createTrie(); //Creo il puntatore al root node del Trie
     TrieNode* currentPointer = head;
     char newLetter;
     while( (bytes_read = read(fd, &newLetter, sizeof(char))) ) //Leggo una lettera alla volta e aggiorno l'albero

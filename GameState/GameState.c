@@ -65,10 +65,10 @@ bool loadMatrixFile(GameInfo* gameInfo) //Funzione per caricare la matrice dal f
         if(bytes_read == 0) return false; //Se c'è stato un errore di lettura esco
 
         //Raggiungo la riga di file che devo leggere in base al round
-        if(currentLine < gameInfo->currentSession->round) { //Se non sto alla riga corrispondente al round continuo a leggere
+        if(currentLine < gameInfo->round) { //Se non sto alla riga corrispondente al round continuo a leggere
             if(newLetter == '\n') currentLine++; //Se arrivo a fine riga incremento il counter
             if(newLetter == EOF) { //Se arrivo a fine file ricomincio dalla prima riga
-                gameInfo->currentSession->round = 0;
+                gameInfo->round = 0;
                 currentLine = 0;
             }
             continue;
@@ -183,10 +183,42 @@ bool initGameSession(GameInfo* info) //Funzione per inizializzare la sessione di
 {
     //Alloco lo spazio per la struct e la inizializzo
     GameSession* session = malloc(sizeof(GameSession));
-    session->round = 0;
+    session->timeToNextPhase = 0;
     session->numPlayers = 0;
     session->gamePhase = Off;
 
     info->currentSession = session; //Salvo il puntatore nella struct GameInfo
+    return generateMatrix(info); //Genero la matrice e ritorno il risultato
+}
+
+void movePlayers(GameSession* newSession, GameSession* oldSession) //Funzione per spostare i giocatori dalla sessione di gioco appena terminata a quella successiva
+{
+    for(int i=0; i<MAX_CLIENTS; i++)
+    {
+        if(oldSession->players[i] != NULL)
+        {
+            newSession->players[newSession->numPlayers] = oldSession->players[i];
+            newSession->numPlayers++;
+        }
+    }
+}
+
+bool nextGameSession(GameInfo* info) //Funzione per inizializzare la nuova sessione di gioco
+{
+    GameSession* oldSession = info->currentSession;
+    if(oldSession == NULL) return false;
+
+    //Alloco lo spazio per la struct e la inizializzo
+    GameSession* session = malloc(sizeof(GameSession));
+    session->timeToNextPhase = oldSession->timeToNextPhase;
+    session->gamePhase = oldSession->gamePhase;
+    session->numPlayers = 0;
+
+    movePlayers(session, oldSession);
+    free(oldSession);
+
+    info->round++;
+    info->currentSession = session; //Salvo il puntatore nella struct GameInfo
+
     return generateMatrix(info); //Genero la matrice e ritorno il risultato
 }

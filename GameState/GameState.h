@@ -1,9 +1,11 @@
 #include <stdbool.h>
 #include "../Utility/Utility.h"
 #include "../DataStructures/Trie.h"
+#include "../DataStructures/DynamicArray.h"
 
 //Massimo numero di player
 #define MAX_CLIENTS 2
+#define PAUSE_TIME 60
 
 //Enum per salvare la scelta della generazione della matrice
 enum MatrixGen
@@ -20,14 +22,22 @@ enum GamePhase
     Paused
 };
 
+enum ThreadFunction
+{
+    Main,
+    Read,
+    Write
+};
+
 //Struct per il player
 typedef struct Player
 {
     int socket_fd;
-    pthread_t thread;
+    pthread_t thread[3];
+    bool bRegistered;
     char* name;
     int score;
-    TrieNode* foundWords;
+    DynamicArray* foundWords;
 } Player;
 
 //Struct per la sessione corrente di gioco
@@ -36,7 +46,7 @@ typedef struct GameSession
     char currentMatrix[MATRIX_SIZE][MATRIX_SIZE];
     Player* players[MAX_CLIENTS];
     int numPlayers;
-    int round;
+    long timeToNextPhase;
     enum GamePhase gamePhase;
 } GameSession;
 
@@ -52,6 +62,7 @@ typedef struct GameInfo
     char* dictionaryFile;
     TrieNode* dictionary;
 
+    int round;
     int seed;
     int gameDuration;
     GameSession* currentSession;
@@ -64,6 +75,6 @@ bool initGameSession(GameInfo* info); //Funzione per inizializzare la sessione d
 
 bool updateMatrixFile(GameInfo* info, char* newFile); //Funzione per aggiornare il file della matrice
 bool updateDictionaryFile(GameInfo* info, char* newFile); //Funzione per aggiornare il file del dizionario
-bool generateMatrix(GameInfo* gameInfo); //Funzione per generare la matrice di gioco
+bool nextGameSession(GameInfo* info); //Funzione per inizializzare la nuova sessione di gioco
 bool findInMatrix(char matrix[MATRIX_SIZE][MATRIX_SIZE], char* word); //Funzione per cercare una parola nella matrice
 

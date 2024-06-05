@@ -12,12 +12,13 @@ CLIENT_EXE = paroliere_cl
 SERVER = Main/Server
 CLIENT = Main/Client
 TRIE = DataStructures/Trie
+ARRAY = DataStructures/DynamicArray
 UTILITY = Utility/Utility
 COMMS = CommsHandler/CommsHandler
 GAMESTATE = GameState/GameState
 
 # Source files
-SRCS = $(SERVER).c $(CLIENT).c $(TRIE).c $(UTILITY).c $(COMMS).c $(GAMESTATE).c
+SRCS = $(SERVER).c $(CLIENT).c $(TRIE).c $(ARRAY).c $(UTILITY).c $(COMMS).c $(GAMESTATE).c
 
 # Object files
 OBJS = $(SRCS:.c=.o)
@@ -26,7 +27,7 @@ OBJS = $(SRCS:.c=.o)
 all: $(SERVER_EXE) $(CLIENT_EXE)
 
 # Rule to link object files to create the server executable
-$(SERVER_EXE):  $(SERVER).o $(TRIE).o $(UTILITY).o $(COMMS).o $(GAMESTATE).o
+$(SERVER_EXE):  $(SERVER).o $(TRIE).o $(ARRAY).o $(UTILITY).o $(COMMS).o $(GAMESTATE).o
 	$(CC) $(CFLAGS) -o $@ $^
 
 # Rule to link object files to create the client executable
