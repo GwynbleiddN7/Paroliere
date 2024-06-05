@@ -7,7 +7,8 @@ typedef struct TrieNode{
     bool wordEnd;
 } TrieNode;
 
-//Rendo "pubbliche" alcune funzioni del file Trie.c
+//Dichiaro le funzioni esposte
 bool findWord(TrieNode* head, const char* word, int currentIndex); //Funzione per verificare la presenza di una parola
 TrieNode* loadDictionary(const char* path); //Funzione per caricare il dizionario dal file
-void freeTrie(TrieNode* head); //Funzione per liberare la memoria
+TrieNode* createTrieNode(); //Alloca un nodo del Trie
+void freeTrie(TrieNode* head); //Funzione per liberare la memoria occupata dal Trie

@@ -1,6 +1,9 @@
 #include <stdbool.h>
 #include "../Utility/Utility.h"
-#define MAX_CLIENTS 1
+#include "../DataStructures/Trie.h"
+
+//Massimo numero di player
+#define MAX_CLIENTS 2
 
 //Enum per salvare la scelta della generazione della matrice
 enum MatrixGen
@@ -10,6 +13,13 @@ enum MatrixGen
     File
 };
 
+enum GamePhase
+{
+    Off,
+    Playing,
+    Paused
+};
+
 //Struct per il player
 typedef struct Player
 {
@@ -17,6 +27,7 @@ typedef struct Player
     pthread_t thread;
     char* name;
     int score;
+    TrieNode* foundWords;
 } Player;
 
 //Struct per la sessione corrente di gioco
@@ -26,7 +37,7 @@ typedef struct GameSession
     Player* players[MAX_CLIENTS];
     int numPlayers;
     int round;
-    bool bIsPaused;
+    enum GamePhase gamePhase;
 } GameSession;
 
 //Struct per le informazioni base del gioco
@@ -34,10 +45,12 @@ typedef struct GameInfo
 {
     char* serverName;
     int serverPort;
+    int serverSocket;
 
     enum MatrixGen customMatrixType;
     char* matrixFile;
     char* dictionaryFile;
+    TrieNode* dictionary;
 
     int seed;
     int gameDuration;
@@ -45,11 +58,12 @@ typedef struct GameInfo
 } GameInfo;
 
 
-//Rendo "pubbliche" alcune funzioni del file GameState.c
+//Dichiaro le funzioni esposte
 GameInfo *initGameInfo(char* newName, int newPort); //Funzione per inizializzare le info
-void initGameSession(GameInfo* info); //Funzione per inizializzare la sessione di gioco
+bool initGameSession(GameInfo* info); //Funzione per inizializzare la sessione di gioco
 
 bool updateMatrixFile(GameInfo* info, char* newFile); //Funzione per aggiornare il file della matrice
 bool updateDictionaryFile(GameInfo* info, char* newFile); //Funzione per aggiornare il file del dizionario
-void generateMatrix(GameInfo* gameInfo); //Funzione per generare la matrice di gioco
+bool generateMatrix(GameInfo* gameInfo); //Funzione per generare la matrice di gioco
+bool findInMatrix(char matrix[MATRIX_SIZE][MATRIX_SIZE], char* word); //Funzione per cercare una parola nella matrice
 

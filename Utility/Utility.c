@@ -5,29 +5,28 @@
 #include <stdbool.h>
 #include "Utility.h"
 
-bool regularFileExists(const char* file)
+bool regularFileExists(const char* file) //Funzione per controllare l'esistenza di un file
 {
-    struct stat statbuf;
-    if(stat(file,  &statbuf) == -1) return false; //Controllo se il file esiste
-    if(!S_ISREG(statbuf.st_mode)) return false; //Controllo se il file è un file regolare
+    struct stat stats;
+    if(stat(file,  &stats) == -1) return false; //Controllo se il file esiste
+    if(!S_ISREG(stats.st_mode)) return false; //Controllo se il file è un file regolare
     return true;
 }
 
-void exitMessage(char* message)
+void exitWithMessage(char* message) //Funzione per terminare il programma con un messaggio
 {
-    printf("%s", message); //Esco con un messaggio
-    fflush(NULL); //Flush del buffer output
-    exit(EXIT_FAILURE);
+    printf("%s", message); //Scrivo un messaggio di errore
+    exit(EXIT_FAILURE); //Esco
 }
 
-void copyString(char** dest, char* src)
+void copyString(char** dest, char* src) //Funzione per creare una stringa con il valore di un'altra
 {
     if(*dest != NULL) free(*dest); //Libero la memoria in caso non fosse NULL
-    *dest = malloc(strlen(src)); //Alloco lo spazio per la nuova stringa
+    *dest = malloc(strlen(src)+1); //Alloco lo spazio per la nuova stringa e il \0
     strcpy(*dest, src); //Copio la stringa
 }
 
-bool strToInt(char* src, int* out)
+bool strToInt(char* src, int* out) //Funzione per convertire stringa in intero
 {
     char* end;
     int num = strtol(src, &end, 10); //Converto la stringa in intero base 10
@@ -36,10 +35,8 @@ bool strToInt(char* src, int* out)
     return true;
 }
 
-bool validatePort(char* portString, int* portInt)
+bool validatePort(char* portString, int* portInt) //Funzione per validare la porta
 {
     strToInt(portString, portInt); //Converto in intero
-    //Controllo che sia una porta nel range valido
-    if(*portInt > 65535  || *portInt < 1024) return false;
-    return true;
+    return (*portInt >= 1024 && *portInt <= 65535); //Controllo che sia una porta nel range valido
 }

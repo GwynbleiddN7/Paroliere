@@ -3,9 +3,10 @@
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <ctype.h>
 #include "Trie.h"
 
-static TrieNode* createTrieNode()
+TrieNode* createTrieNode() //Funzione per creare un nodo
 {
     //Alloco lo spazio per un nuovo nodo e lo inizializzo
     TrieNode* node = malloc(sizeof(TrieNode));
@@ -14,29 +15,27 @@ static TrieNode* createTrieNode()
     return node;
 }
 
-static TrieNode* findLetter(TrieNode* node, char letter)
+static TrieNode* findLetter(TrieNode* node, char letter) //Funzione per cercare una lettera in un nodo
 {
+    if(!isalpha(letter)) return NULL; //Controllo che sia una lettera
+    letter = tolower(letter); //Converto la lettere in minuscolo per comodità
+
     int asciiDiff = letter - FIRST_LETTER; //Calcolo offset relativo della lettera
-    if(asciiDiff >= 0 && asciiDiff < TOTAL_LETTERS) //Controllo se è una lettera dell'alfabeto valida [a -> z]
-    {
-        return node->nextLetters[asciiDiff]; //Ritorno il puntatore alla prossima lettera
-    }
-    return NULL;
+    return node->nextLetters[asciiDiff]; //Ritorno il puntatore alla prossima lettera
 }
 
-static TrieNode* addLeaf(TrieNode* node, char letter)
+static TrieNode* addLeaf(TrieNode* node, char letter) //Funzione per provare ad aggiungere una foglia al Trier
 {
+    if(!isalpha(letter)) return NULL; //Controllo che sia una lettera
+    letter = tolower(letter); //Converto la lettere in minuscolo per comodità
+
     int asciiDiff = letter - FIRST_LETTER; //Calcolo offset relativo della lettera
-    if(asciiDiff >= 0 && asciiDiff < TOTAL_LETTERS) //Controllo se è una lettera dell'alfabeto valida [a -> z]
-    {
-        //Alloco lo spazio per una nuova lettera e ritorno il puntatore
-        if(node->nextLetters[asciiDiff] == NULL) node->nextLetters[asciiDiff] = createTrieNode();
-        return node->nextLetters[asciiDiff];
-    }
-    return NULL;
+    //Alloco lo spazio per una nuova lettera e ritorno il puntatore
+    if(node->nextLetters[asciiDiff] == NULL) node->nextLetters[asciiDiff] = createTrieNode();
+    return node->nextLetters[asciiDiff];
 }
 
-void freeTrie(TrieNode* head) //Funzione per liberare lo spazio allocato
+void freeTrie(TrieNode* head) //Funzione per liberare la memoria occupata dal Trie
 {
     if(head == NULL) return;
     for(int i=0; i<TOTAL_LETTERS; i++)
@@ -47,7 +46,7 @@ void freeTrie(TrieNode* head) //Funzione per liberare lo spazio allocato
 }
 
 
-bool findWord(TrieNode* head, const char* word, int currentIndex)
+bool findWord(TrieNode* head, const char* word, int currentIndex) //Funzione per verificare la presenza di una parola
 {
     if(currentIndex == strlen(word)) //Se sto alla fine della parola, controllo la flag wordEnd e ritorno il suo valore (true se parola trovata)
     {
@@ -59,20 +58,20 @@ bool findWord(TrieNode* head, const char* word, int currentIndex)
     else return false; //Altrimenti la parola non è presente e ritorno false
 }
 
-TrieNode* loadDictionary(const char* path)
+TrieNode* loadDictionary(const char* path) //Funzione per caricare il dizionario dal file
 {
-    int retvalue, fd;
+    int bytes_read, fd;
 
     //Controllo che il file esista e che sia di tipo corretto
-    if(!regularFileExists(path)) exitMessage("File dizionario non esistente o di formato non corretto");
+    if(!regularFileExists(path)) return NULL;
 
     //Apro il file dizionario in lettura con una chiamata di sistema
-    SYSC(fd, open(path, O_RDONLY), "Errore nell'apertura del file dizionario");
+    if(syscall_fails_get(fd, open(path, O_RDONLY))) return NULL;
 
     TrieNode* head = createTrieNode(); //Creo il puntatore al root node del Trie
     TrieNode* currentPointer = head;
     char newLetter;
-    while( (retvalue = read(fd, &newLetter, sizeof(char))) ) //Leggo una lettera alla volta e aggiorno l'albero
+    while( (bytes_read = read(fd, &newLetter, sizeof(char))) ) //Leggo una lettera alla volta e aggiorno l'albero
     {
         if(newLetter == '\n') { //Se ho letto \n la parola è terminata e setto la flag wordEnd
             currentPointer->wordEnd = true;
@@ -81,7 +80,7 @@ TrieNode* loadDictionary(const char* path)
         }
 
         currentPointer = addLeaf(currentPointer, newLetter); //Provo ad aggiungere una foglia se non esiste la lettera corrispondente
-        if(currentPointer == NULL) //Lettura lettera non valida, elimino il Trie e esco dal ciclo
+        if(currentPointer == NULL || bytes_read == 0) //Lettura lettera non valida, elimino il Trie ed esco dal ciclo
         {
             freeTrie(head);
             head = NULL;
@@ -90,10 +89,7 @@ TrieNode* loadDictionary(const char* path)
     }
 
     //Chiudo il file con una chiamata di sistema
-    SYSCALL(close(fd), "Errore nella chiusura del file dizionario");
-
-    //Errore nel salvataggio del puntatore al dizionario, chiudo il programma
-    if(head == NULL) exitMessage("Errore nel salvataggio del dizionario");
+    if(syscall_fails(close(fd))) return NULL;
 
     return head;
 }
