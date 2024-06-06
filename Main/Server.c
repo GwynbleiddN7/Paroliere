@@ -31,53 +31,48 @@ static struct option long_options[] =
 };
 
 //Dichiaro le funzioni
-static void freeGameMem(); //Funzione per liberare la memoria occupata dalle strutture di gioco
-static void getOptionalParameters(int argc, char** argv); //Funzione per leggere i parametri opzionali
-static void* start_server(); //Funzione del thread per avviare il server
-static void* handle_player(void* playerArg); //Funzione del thread per gestire una nuova connessione
-static bool addPlayerToGame(Player* player); //Funzione per aggiungere un player al game
-static void removePlayerFromGame(Player* player); //Funzione per rimuovere un player dal game
-static void deletePlayer(Player* player); //Funzione per interrompere il thread giocatore liberando correttamente la memoria
-static void sendMatrix(Player* player); //Funzione per inviare un messaggio con la matrice e/o i tempi di gioco/attesa
-static long getWordScore(char* word);
-void* scorer();
+void* start_server(); //Funzione del thread per avviare il server
+void timeTick(int signum); //Funzione callback per SIGALARM
+void* scorer(); //Funzione del thread per gestire gli score
+void* handle_player(void* playerArg); //Funzione del thread per gestire una nuova connessione
+void* player_write(void* playerArg); //Funzione del thread per inviare in modo asincrono messaggi ai client
+void* player_read(void* playerArg); //Funzione del thred per leggere i messaggi dai client
+bool addPlayerToGame(Player* player); //Funzione per aggiungere un player al game
+void removePlayerFromGame(Player* player); //Funzione per rimuovere un player dal game;
+void deletePlayer(Player* player); //Funzione per eliminare un giocatore
+void freeGameMem(); //Funzione per liberare la memoria occupata dalle strutture di gioco
+void sendMatrix(Player* player); //Funzione per inviare un messaggio con la matrice e/o i tempi di gioco/attesa
+long getWordScore(char* word); //Funzione per calcolare il punteggio di una parola
+void getOptionalParameters(int argc, char** argv); //Funzione per leggere i parametri opzionali
+void exitBeforeStart(char* message); //Funzione per uscire liberando la memoria prima dell'inizio del game
 
-static GameInfo* gameInfo; //Struct condivisa che contiene tutte le informazioni del gioco
+static GameInfo* gameInfo = NULL; //Struct condivisa che contiene tutte le informazioni del gioco
 
 //Variabili di condizione per gestire la lista di giocatori
 pthread_mutex_t players_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t players_not_full = PTHREAD_COND_INITIALIZER;
 
 pthread_mutex_t score_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t score_cond = PTHREAD_COND_INITIALIZER;
+pthread_cond_t score_added_cond = PTHREAD_COND_INITIALIZER;
+pthread_cond_t score_ready_cond = PTHREAD_COND_INITIALIZER;
 
 int main(int argc, char** argv)
 {
     //Validazione parametri obbligatori
     if(argc-1 < 2) exitWithMessage("Nome host e numero porta sono obbligatori"); //Controllo che ci siamo almeno i primi 2 parametri (-1 per il nome del file)
-    char* addr = argv[ADDR_INDEX]; //Prendo il primo parametro che corrisponde all'hostname
     int port;
     if(!validatePort(argv[PORT_INDEX], &port)) exitWithMessage("Numero di porta non corretto"); //Controllo con una funzione se la porta inserita è valida, se non lo è interrompo
 
     //Inizializzazione struttura di gioco
-    gameInfo = initGameInfo(addr, port); //Inizializzo la struct che contiene le informazioni del gioco
+    gameInfo = initGameInfo(argv[ADDR_INDEX], port); //Inizializzo la struct che contiene le informazioni del gioco
     getOptionalParameters(argc, argv); //Aggiorno la struct con i parametri opzionali
     srand(gameInfo->seed); //Inizializzo srand con il seed time(0) o con quello inserito come parametro
 
     //Carico il dizionario da file
     gameInfo->dictionary = loadDictionary(gameInfo->dictionaryFile);
-    if(gameInfo->dictionary == NULL)
-    {
-        freeGameMem();
-        exitWithMessage("Errore nella lettura del dizionario");
-    }
+    if(gameInfo->dictionary == NULL) exitBeforeStart("Errore nella lettura del dizionario");
 
     //Inizializzazione sessione di gioco
-    if(!initGameSession(gameInfo))
-    {
-        freeGameMem();
-        exitWithMessage("Errore nella creazione della matrice");
-    }
+    if(!initGameSession(gameInfo)) exitBeforeStart("Errore nella creazione della matrice");
 
     //Gestione del segnale SIGINT per terminare
     sigset_t set; int sig;
@@ -93,6 +88,8 @@ int main(int argc, char** argv)
     }
 
     sigwait(&set,&sig);
+    alarm(0); //Cancello un eventuale alarm in corso
+    if(gameInfo->currentSession != NULL) gameInfo->currentSession->gamePhase = Off;
     printf("\nInterruzione del gioco in corso...\n");
     fflush(stdout);
 
@@ -104,71 +101,6 @@ int main(int argc, char** argv)
     freeGameMem(); //Libero tutta la memoria occupata dalle strutture di gioco
 }
 
-void getOptionalParameters(int argc, char** argv) //Funzione per leggere i parametri opzionali
-{
-    int option; opterr = 0;
-    while ((option = getopt_long_only(argc, argv, "m:t:s:d:", long_options, NULL)) != -1) //Uso gli opt_long per prendere i 4 possibili parametri opzionali m t s d (m:t:s:d: indica che hanno un valore dopo)
-    {
-        switch (option)
-        {
-            case 'm':
-                if(gameInfo->customMatrixType == Random)
-                    exitWithMessage("Seed e File matrice non possono essere presenti contemporaneamente"); //Se Random era settato ho già un'opzione e interrompo
-                if(!updateMatrixFile(gameInfo, optarg)) exitWithMessage("File matrice non esistente o non corretto"); //Se il file non esiste interrompo, altrimenti lo salvo nella struct
-                break;
-            case 't':
-            {
-                int duration;
-                if(!strToInt(optarg, &duration) || duration <= 0) exitWithMessage("Durata di gioco non valido"); //Se il valore della durata è un intero lo converto e lo salvo nella struct, altrimenti interrompo
-                gameInfo->gameDuration = duration * 60;
-                break;
-            }
-            case 's':
-                if(gameInfo->customMatrixType == File)
-                    exitWithMessage("Seed e File matrice non possono essere presenti contemporaneamente"); //Se File era settato ho già un'opzione e interrompo
-                if(!strToInt(optarg, &gameInfo->seed)) exitWithMessage("Seed non valido"); //Se il valore del seed è un intero lo converto e lo salvo nella struct, altrimenti interrompo
-                gameInfo->customMatrixType = Random; //Aggiorno la flag per sapere in quale caso mi trovo
-                break;
-            case 'd':
-                if(!updateDictionaryFile(gameInfo, optarg))
-                    exitWithMessage("File dizionario non esistente o non corretto"); //Se il file non esiste interrompo, altrimenti lo salvo nella struct
-                break;
-            default:
-                exitWithMessage("Parametri aggiuntivi non riconosciuti"); //Se trovo altri parametri interrompo
-        }
-    }
-    if (optind != argc-2) exitWithMessage("Parametri aggiuntivi non riconosciuti"); //Se trovo altri parametri interrompo
-}
-
-void timeTick(int signum) //Funzione callback per SIGALARM
-{
-    if(gameInfo == NULL || gameInfo->currentSession == NULL) return;
-    if(gameInfo->currentSession->gamePhase == Off) return;
-
-    gameInfo->currentSession->timeToNextPhase--; //Decremento il counter del tempo
-    if(gameInfo->currentSession->timeToNextPhase <= 0)
-    {
-        //Aggiorno la fase di gioco
-        if(gameInfo->currentSession->gamePhase == Paused)
-        {
-            gameInfo->currentSession->gamePhase = Playing;
-            gameInfo->currentSession->timeToNextPhase = 10;//gameInfo->gameDuration;
-        }
-        else
-        {
-            gameInfo->currentSession->gamePhase = Paused;
-            gameInfo->currentSession->timeToNextPhase = 10;//PAUSE_TIME;
-        }
-
-        //Avvio il thread che si occupa degli score
-        pthread_t scorer_thread;
-        pthread_create(&scorer_thread, NULL, scorer, NULL);
-        pthread_join(scorer_thread, NULL);
-
-        if(gameInfo->currentSession->gamePhase == Paused) nextGameSession(gameInfo); //Se il gioco entrato in pausa creo la nuova sessione
-    }
-    alarm(1); //Riavvio il counter
-}
 
 void* start_server() //Funzione del thread per avviare il server
 {
@@ -197,8 +129,12 @@ void* start_server() //Funzione del thread per avviare il server
 
     //Gestione per intercettare SIGALARM
     struct sigaction act;
+    sigset_t set;
+    sigemptyset(&set);
+    sigaddset(&set, SIGALRM);
     act.sa_handler = &timeTick;
     act.sa_flags = SA_RESTART;
+    act.sa_mask = set;
     sigaction(SIGALRM, &act, NULL);
 
     alarm(1); //Avvio il gioco tramite il segnale SIGALARM intercettato da timeTick
@@ -209,17 +145,14 @@ void* start_server() //Funzione del thread per avviare il server
         int fd_client;
         if(syscall_fails_get(fd_client,accept(gameInfo->serverSocket, (struct sockaddr *) &client_addr, &client_addr_len))) break;
 
-        //Alloco la memoria per il nuovo player e lo inizializzo
-        Player* player = malloc(sizeof(Player));
-        player->socket_fd = fd_client;
-        player->foundWords = createArray();
-        player->score = 0;
-        player->bRegistered = false;
+        //Creo un nuovo giocatore
+        Player* player = createPlayer(fd_client);
 
         //Lascio gestire il player a un nuovo thread
         if (pthread_create(&player->thread[Main], NULL, handle_player, (void*) player) != 0)
         {
             //Se non riesco a creare un thread per un client continuo a giocare ma avviso con un errore e libero la memoria del player
+            freeStringArray(player->foundWords);
             free(player);
             perror("Errore creazione thread client");
         }
@@ -228,27 +161,104 @@ void* start_server() //Funzione del thread per avviare il server
     pthread_exit(NULL);
 }
 
-void* scorer()
+
+void timeTick(int signum) //Funzione callback per SIGALARM
 {
+    if(gameInfo == NULL || gameInfo->currentSession == NULL) return;
+    if(gameInfo->currentSession->gamePhase == Off) return;
+
+    gameInfo->currentSession->timeToNextPhase--; //Decremento il counter del tempo
+    if(gameInfo->currentSession->timeToNextPhase <= 0)
+    {
+        //Aggiorno la fase di gioco
+        if(gameInfo->currentSession->gamePhase == Paused)
+        {
+            gameInfo->currentSession->gamePhase = Playing;
+            gameInfo->currentSession->timeToNextPhase = 10;//gameInfo->gameDuration;
+        }
+        else
+        {
+            gameInfo->currentSession->gamePhase = Paused;
+            gameInfo->currentSession->timeToNextPhase = 10;//PAUSE_TIME;
+        }
+
+        //Avvio il thread che si occupa degli score
+        pthread_t scorer_thread;
+        pthread_create(&scorer_thread, NULL, scorer, NULL);
+        pthread_join(scorer_thread, NULL);
+
+        if(gameInfo->currentSession->gamePhase == Playing)
+        {
+            if(!nextGameSession(gameInfo)) //Se il gioco entrato in pausa creo la nuova sessione
+            {
+                perror("Errore lettura nuova matrice"); //Invio il messaggio di errore
+                kill(getpid(), SIGINT); //Lascio gestire la chiusura all'intercept personalizzato del SIGINT
+                return;
+            }
+        }
+        else gameInfo->matrixLine++; //Alla fine di ogni partita aumento il counter della prossima riga da leggere
+    }
+    alarm(1); //Riavvio il counter
+}
+
+
+void* scorer() //Funzione del thread per gestire gli score
+{
+    if(gameInfo->currentSession == NULL || gameInfo->currentSession->gamePhase == Off) pthread_exit(NULL);
+
     pthread_mutex_lock(&players_mutex); //Evito che altri player possano unirsi al game durante il rilascio dei punti
 
     //Invio il messaggio asincrono ai player
     for(int i = 0; i<MAX_CLIENTS; i++)
-        if(gameInfo->currentSession->players[i] != NULL) pthread_kill(gameInfo->currentSession->players[i]->thread[Write], SIGUSR1);
+        if(gameInfo->currentSession->players[i] != NULL && gameInfo->currentSession->players[i]->bRegistered)
+        {
+            if(gameInfo->currentSession->gamePhase == Playing) gameInfo->currentSession->players[i]->score = 0; //Se sto iniziando una nuova partita resetto lo score dei giocatori
+            pthread_kill(gameInfo->currentSession->players[i]->thread[Write], SIGUSR1); //Invio ai thread dei player il segnale per avviare la lettura degli score o l'invio della matrice
+        }
 
-    if(gameInfo->currentSession->gamePhase == Playing) pthread_exit(NULL); //Se non devo mandare gli score esco (cioè da Paused è passata a Playing)
+
+    if(gameInfo->currentSession->gamePhase == Playing){ //Se non devo mandare gli score esco (cioè è appena finita la pausa e sono in game)
+        pthread_mutex_unlock(&players_mutex);
+        pthread_exit(NULL);
+    }
 
     pthread_mutex_lock(&score_mutex);
-    int listSize;
-    while(listSize < gameInfo->currentSession->numPlayers) pthread_cond_wait(&score_cond, &score_mutex);
-    //get winner
-    pthread_cond_broadcast(&score_cond);
+    while(gameInfo->currentSession->scores->size < gameInfo->currentSession->numPlayers) pthread_cond_wait(&score_added_cond, &score_mutex);
+
+    for(int i=0; i < gameInfo->currentSession->scores->size; i++)
+    {
+        //int newSize = strlen(gameInfo->currentSession->scores->scores[i]->playerName) + sizeof(int)
+        //gameInfo->currentSession->scores->textCSV =1
+        //strcat()
+        printf("%s %d\n", gameInfo->currentSession->scores->scores[i].playerName, gameInfo->currentSession->scores->scores[i].score);
+    }
+
+    pthread_cond_broadcast(&score_ready_cond);
     pthread_mutex_unlock(&score_mutex);
     pthread_mutex_unlock(&players_mutex);
     pthread_exit(NULL);
 }
 
-void* player_write(void* playerArg)
+
+void* handle_player(void* playerArg) //Funzione del thread per gestire una nuova connessione
+{
+    Player* player = (Player*) playerArg; //Casting del parametro a Player*
+
+    pthread_create(&player->thread[Read], NULL, player_read, playerArg);
+    pthread_create(&player->thread[Write], NULL, player_write, playerArg);
+
+    pthread_join(player->thread[Read], NULL);
+    player->bRegistered = false; //Se si chiude il thread di lettura il player non è più registrato
+
+    pthread_kill(player->thread[Write], SIGUSR1); //Invio un segnale per far chiudere il thread di lettura
+    pthread_join(player->thread[Write], NULL); //Aspetto che si chiuda
+
+    deletePlayer(player); //Elimino la memoria occupata dal player
+    pthread_exit(NULL);
+}
+
+
+void* player_write(void* playerArg) //Funzione del thread per inviare in modo asincrono messaggi ai client
 {
     Player* player = (Player*) playerArg; //Casting del parametro a Player*
     sigset_t set; int sig;
@@ -261,12 +271,13 @@ void* player_write(void* playerArg)
     {
         sigwait(&set, &sig);
         if(!player->bRegistered) break;
-        if(gameInfo->currentSession->gamePhase == Paused) //Se il gioco sta terminando (cioè da Playing è passato a Paused)
+        if(gameInfo->currentSession->gamePhase == Paused) //Se il gioco sta terminando (cioè è appena finita la partita)
         {
             pthread_mutex_lock(&score_mutex);
-            //add to list
-            pthread_cond_wait(&score_cond, &score_mutex);
-            //send score
+            addScoreToArray(gameInfo->currentSession->scores, player->name, player->score);
+            pthread_cond_signal(&score_added_cond);
+            pthread_cond_wait(&score_ready_cond, &score_mutex);
+            sendTextMessage(player->socket_fd, MSG_PUNTI_FINALI, gameInfo->currentSession->scores->textCSV);
             pthread_mutex_unlock(&score_mutex);
         }
         else sendMatrix(player); //Se il gioco sta ricominciando mando la matrice
@@ -274,7 +285,8 @@ void* player_write(void* playerArg)
     pthread_exit(NULL);
 }
 
-void* player_read(void* playerArg)
+
+void* player_read(void* playerArg) //Funzione del thred per leggere i messaggi dai client
 {
     Player* player = (Player*) playerArg; //Casting del parametro a Player*
 
@@ -367,10 +379,10 @@ void* player_read(void* playerArg)
                             sendTextMessage(player->socket_fd, MSG_ERR, "Parola non valida");
                             break;
                         }
-                        bool wordAlreadyFound = findInArray(player->foundWords, word);
+                        bool wordAlreadyFound = findStringInArray(player->foundWords, word);
                         if(wordAlreadyFound) sendNumMessage(player->socket_fd, MSG_PUNTI_PAROLA, 0);
                         else{
-                            addToArray(player->foundWords, word);
+                            addStringToArray(player->foundWords, word);
                             long score = getWordScore(msg->data);
                             sendNumMessage(player->socket_fd, MSG_PUNTI_PAROLA, score);
                             player->score += (int)score;
@@ -381,7 +393,8 @@ void* player_read(void* playerArg)
             }
             case MSG_PUNTI_FINALI:
                 if(!player->bRegistered) sendTextMessage(player->socket_fd, MSG_ERR, "Devi registrarti per usare questo comando");
-                else sendNumMessage(player->socket_fd, MSG_PUNTI_FINALI, (long) player->score);
+                else if(gameInfo->currentSession->scores != NULL) sendTextMessage(player->socket_fd, MSG_PUNTI_FINALI, gameInfo->currentSession->scores);
+                else sendTextMessage(player->socket_fd, MSG_ERR, "Non è presente una classifica generale");
                 break;
             case MSG_MATRICE:
                 if(!player->bRegistered) sendTextMessage(player->socket_fd, MSG_ERR, "Devi registrarti per usare questo comando");
@@ -398,22 +411,6 @@ void* player_read(void* playerArg)
     }
 }
 
-void* handle_player(void* playerArg) //Funzione del thread per gestire una nuova connessione
-{
-    Player* player = (Player*) playerArg; //Casting del parametro a Player*
-
-    pthread_create(&player->thread[Read], NULL, player_read, playerArg);
-    pthread_create(&player->thread[Write], NULL, player_write, playerArg);
-
-    pthread_join(player->thread[Read], NULL);
-    player->bRegistered = false; //Se si chiude il thread di lettura il player non è più registrato
-
-    pthread_kill(player->thread[Write], SIGUSR1); //Invio un segnale per far chiudere il thread di lettura
-    pthread_join(player->thread[Write], NULL); //Aspetto che si chiuda
-
-    deletePlayer(player); //Elimino la memoria occupata dal player
-    pthread_exit(NULL);
-}
 
 bool addPlayerToGame(Player* player) //Funzione per aggiungere un player al game
 {
@@ -437,6 +434,7 @@ bool addPlayerToGame(Player* player) //Funzione per aggiungere un player al game
     return true;
 }
 
+
 void removePlayerFromGame(Player* player) //Funzione per rimuovere un player dal game
 {
     pthread_mutex_lock(&players_mutex); //Inizio della sezione critica con l'acquisizione di un lock
@@ -449,7 +447,6 @@ void removePlayerFromGame(Player* player) //Funzione per rimuovere un player dal
             {
                 gameInfo->currentSession->players[i] = NULL; //Rendo disponibile lo slot
                 gameInfo->currentSession->numPlayers--; //Decremento il numero di player in game
-                pthread_cond_signal(&players_not_full); //Segnalo a un eventuale thread in pausa nella wait che si è liberato uno slot
                 break;
             }
         }
@@ -458,24 +455,26 @@ void removePlayerFromGame(Player* player) //Funzione per rimuovere un player dal
     pthread_mutex_unlock(&players_mutex); //Sblocco il lock alla fine della sezione critica
 }
 
-void deletePlayer(Player* player)
+
+void deletePlayer(Player* player) //Funzione per eliminare un giocatore
 {
     if(player == NULL) return; //Failsafe
     if(gameInfo->currentSession->gamePhase != Off) { //Se devo rendere disponibile un nuovo slot (false quando viene chiamata da freeGameMem ~ non rischio di chiudere due volte il socket)
+        pthread_detach(player->thread[Main]); //Se non sto chiudendo il server non ho bisogno di attendere che il thread principale si chiuda e posso far liberare la memoria automaticamente
         removePlayerFromGame(player); //Se il game è in corso (quindi non sto chiudendo il server), rendo disponibile lo slot
         close(player->socket_fd); //Chiudo la connessione con il client del player in questione (se c'è un errore il socket è già chiuso o comunque procedo a liberare la memoria)
     }
-    freeArray(player->foundWords); //Libero la memoria occupata dal Trie delle parole trovate
+    freeStringArray(player->foundWords); //Libero la memoria occupata dal Trie delle parole trovate
     free(player->name); //Libero la memoria occupata dal nome
     free(player); //Libero la memoria occupata dalla struct
 }
 
-void freeGameMem()
+
+void freeGameMem() //Funzione per liberare la memoria occupata dalle strutture di gioco
 {
     if(gameInfo == NULL) return; //Failsafe
     if(gameInfo->currentSession != NULL)
     {
-        gameInfo->currentSession->gamePhase = Off;
         for(int i=0; i<MAX_CLIENTS; i++) {
             Player* player = gameInfo->currentSession->players[i];
             if(player == NULL) continue;
@@ -484,6 +483,7 @@ void freeGameMem()
             close(player->socket_fd); //Non eseguo controlli sul risultato perché sto chiudendo il programma
             pthread_join(player->thread[Main], NULL); //Attendo la chiusura del thread che si occupa di liberare la memoria se il socket era ancora aperto
         }
+        freeScoreArray(gameInfo->currentSession->scores);
         free(gameInfo->currentSession); //Libero la memoria occupata dalla struct della sessione
     }
     if(gameInfo->dictionary != NULL) freeTrie(gameInfo->dictionary); //Libero la memoria occupata dal Trie del dizionario
@@ -493,6 +493,7 @@ void freeGameMem()
 
     free(gameInfo); //Libero la memoria occupata dalla struct del gioco
 }
+
 
 void sendMatrix(Player* player) //Funzione per inviare un messaggio con la matrice e/o i tempi di gioco/attesa
 {
@@ -504,9 +505,52 @@ void sendMatrix(Player* player) //Funzione per inviare un messaggio con la matri
     }
 }
 
-long getWordScore(char* word) //Funzione per contare lo score di una parola
+
+long getWordScore(char* word) //Funzione per calcolare il punteggio di una parola
 {
     int counter = 0;
     for(int i=0; i<strlen(word); i++) if(word[i] != 'q') counter++; //Gestisco il caso Qu che deve valere 1
     return counter;
+}
+
+
+void getOptionalParameters(int argc, char** argv) //Funzione per leggere i parametri opzionali
+{
+    int option; opterr = 0;
+    while ((option = getopt_long_only(argc, argv, "m:t:s:d:", long_options, NULL)) != -1) //Uso gli opt_long per prendere i 4 possibili parametri opzionali m t s d (m:t:s:d: indica che hanno un valore dopo)
+    {
+        switch (option)
+        {
+            case 'm':
+                if(gameInfo->customMatrixType == Random) exitBeforeStart("Seed e File matrice non possono essere presenti contemporaneamente"); //Se Random era settato ho già un'opzione e interrompo
+                if(!updateMatrixFile(gameInfo, optarg)) exitBeforeStart("File matrice non esistente o non corretto"); //Se il file non esiste interrompo, altrimenti lo salvo nella struct
+                break;
+            case 't':
+            {
+                int duration;
+                if(!strToInt(optarg, &duration) || duration <= 0) exitBeforeStart("Durata di gioco non valido"); //Se il valore della durata è un intero lo converto e lo salvo nella struct, altrimenti interrompo
+                gameInfo->gameDuration = duration * 60;
+                break;
+            }
+            case 's':
+                if(gameInfo->customMatrixType == File)
+                    exitBeforeStart("Seed e File matrice non possono essere presenti contemporaneamente"); //Se File era settato ho già un'opzione e interrompo
+                if(!strToInt(optarg, &gameInfo->seed)) exitBeforeStart("Seed non valido"); //Se il valore del seed è un intero lo converto e lo salvo nella struct, altrimenti interrompo
+                gameInfo->customMatrixType = Random; //Aggiorno la flag per sapere in quale caso mi trovo
+                break;
+            case 'd':
+                if(!updateDictionaryFile(gameInfo, optarg))
+                    exitBeforeStart("File dizionario non esistente o non corretto"); //Se il file non esiste interrompo, altrimenti lo salvo nella struct
+                break;
+            default:
+                exitBeforeStart("Parametri aggiuntivi non riconosciuti"); //Se trovo altri parametri interrompo
+        }
+    }
+    if (optind != argc-2) exitBeforeStart("Parametri aggiuntivi non riconosciuti"); //Se trovo altri parametri interrompo
+}
+
+void exitBeforeStart(char* message)  //Funzione per uscire liberando la memoria prima dell'inizio del game
+{
+    freeGameMem();
+    exitWithMessage(message);
 }

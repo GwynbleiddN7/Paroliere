@@ -37,7 +37,7 @@ typedef struct Player
     bool bRegistered;
     char* name;
     int score;
-    DynamicArray* foundWords;
+    StringList* foundWords;
 } Player;
 
 //Struct per la sessione corrente di gioco
@@ -45,6 +45,7 @@ typedef struct GameSession
 {
     char currentMatrix[MATRIX_SIZE][MATRIX_SIZE];
     Player* players[MAX_CLIENTS];
+    ScoreList* scores;
     int numPlayers;
     long timeToNextPhase;
     enum GamePhase gamePhase;
@@ -62,7 +63,7 @@ typedef struct GameInfo
     char* dictionaryFile;
     TrieNode* dictionary;
 
-    int round;
+    int matrixLine;
     int seed;
     int gameDuration;
     GameSession* currentSession;
@@ -72,7 +73,7 @@ typedef struct GameInfo
 //Dichiaro le funzioni esposte
 GameInfo *initGameInfo(char* newName, int newPort); //Funzione per inizializzare le info
 bool initGameSession(GameInfo* info); //Funzione per inizializzare la sessione di gioco
-
+Player* createPlayer(int fd_client); //Funzione per inizializzare un nuovo giocatore
 bool updateMatrixFile(GameInfo* info, char* newFile); //Funzione per aggiornare il file della matrice
 bool updateDictionaryFile(GameInfo* info, char* newFile); //Funzione per aggiornare il file del dizionario
 bool nextGameSession(GameInfo* info); //Funzione per inizializzare la nuova sessione di gioco

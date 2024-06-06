@@ -63,6 +63,7 @@ void sendTextMessage(int fd, const char type, const void* data) //Funzione per i
     void* msg;
     int msg_size = buildTextMsg(&msg, type, data); //Creo il messaggio di testo
     write(fd, msg, msg_size); //Invio il messaggio attraverso il fd (eventuali errori nel canale di comunicazione vengono gestiti dalla read)
+    deleteMessage(msg);
 }
 
 void sendNumMessage(int fd, char type, long message) //Funzione per inviare un messaggio numerico tramite un file descriptor
@@ -70,6 +71,7 @@ void sendNumMessage(int fd, char type, long message) //Funzione per inviare un m
     void* msg;
     int msg_size = buildNumMsg(&msg, type, message); //Creo il messaggio numerico
     write(fd, msg, msg_size); //Invio il messaggio attraverso il fd (eventuali errori nel canale di comunicazione vengono gestiti dalla read)
+    deleteMessage(msg);
 }
 
 Message* readMessage(int fd) //Funzione per leggere i campi di un messaggio

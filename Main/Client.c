@@ -204,7 +204,7 @@ void* read_buffer(void* arg) //Funzione thread per leggere il buffer dal server
                 if(msg->length > 0) printf("%s\n", msg->data);
                 break;
             case MSG_PUNTI_FINALI:
-                printf("Punti totali: %ld\n", getNumber(msg->data));
+                printf("\nPunti totali: %ld\n", getNumber(msg->data));
                 pthread_cond_signal(&output_available);
                 break;
             case MSG_PUNTI_PAROLA:

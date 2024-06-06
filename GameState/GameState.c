@@ -17,16 +17,21 @@ GameInfo *initGameInfo(char* newName, int newPort) //Funzione per inizializzare 
     //Inizializzo la struct con le informazioni di Default
     GameInfo* gameInfo = malloc(sizeof(GameInfo));
 
-    copyString(&gameInfo->serverName, newName);
     gameInfo->serverPort = newPort;
+    gameInfo->serverName = NULL;
+    copyString(&gameInfo->serverName, newName);
 
+    gameInfo->matrixLine = 0;
     gameInfo->customMatrixType = Default;
     gameInfo->matrixFile = NULL;
-    copyString(&gameInfo->dictionaryFile, DEFAULT_DICT_FILE); //Path dizionario default
+    gameInfo->dictionaryFile = NULL;
 
     gameInfo->seed = time(0); //Seed di default
     gameInfo->gameDuration = DEFAULT_GAME_DURATION; //Durata game default
     gameInfo->currentSession = NULL;
+    gameInfo->dictionary= NULL;
+
+    copyString(&gameInfo->dictionaryFile, DEFAULT_DICT_FILE); //Path dizionario default
 
     return gameInfo;
 }
@@ -60,17 +65,21 @@ bool loadMatrixFile(GameInfo* gameInfo) //Funzione per caricare la matrice dal f
 
     char newLetter;
     int rowIndex=0, colIndex=0, currentLine=0;
-    while( (bytes_read = read(fd, &newLetter, sizeof(char))) ) //Leggo un byte alla volta dal file (sizeof(char))
+    while(true) //Leggo un byte alla volta dal file (sizeof(char))
     {
-        if(bytes_read == 0) return false; //Se c'è stato un errore di lettura esco
+        if(syscall_fails_get(bytes_read, read(fd, &newLetter, sizeof(char)))) return false;
+
+        if(bytes_read == 0) //Se arrivo a fine file ricomincio dalla prima riga
+        {
+            printf("EOF\n");
+            lseek(fd, 0, SEEK_SET);
+            gameInfo->matrixLine = 0;
+            currentLine = 0;
+        }
 
         //Raggiungo la riga di file che devo leggere in base al round
-        if(currentLine < gameInfo->round) { //Se non sto alla riga corrispondente al round continuo a leggere
+        if(currentLine < gameInfo->matrixLine) { //Se non sto alla riga corrispondente al round continuo a leggere
             if(newLetter == '\n') currentLine++; //Se arrivo a fine riga incremento il counter
-            if(newLetter == EOF) { //Se arrivo a fine file ricomincio dalla prima riga
-                gameInfo->round = 0;
-                currentLine = 0;
-            }
             continue;
         }
         if(newLetter == '\n') break; //Se arrivo a fine riga interrompo la lettura
@@ -89,8 +98,18 @@ bool loadMatrixFile(GameInfo* gameInfo) //Funzione per caricare la matrice dal f
     }
 
     if(syscall_fails(close(fd))) return false; //Provo a chiudere il file
-
     return true;
+}
+
+Player* createPlayer(int fd_client) //Funzione per inizializzare un nuovo giocatore
+{
+    Player* player = malloc(sizeof(Player));
+    player->socket_fd = fd_client;
+    player->foundWords = createStringArray();
+    player->score = 0;
+    player->name = NULL;
+    player->bRegistered = false;
+    return player;
 }
 
 //Enum per le direzioni della ricerca
@@ -183,42 +202,22 @@ bool initGameSession(GameInfo* info) //Funzione per inizializzare la sessione di
 {
     //Alloco lo spazio per la struct e la inizializzo
     GameSession* session = malloc(sizeof(GameSession));
+    for(int i=0; i<MAX_CLIENTS; i++) session->players[i] = NULL;
     session->timeToNextPhase = 0;
     session->numPlayers = 0;
     session->gamePhase = Off;
+    session->scores = NULL;
 
     info->currentSession = session; //Salvo il puntatore nella struct GameInfo
     return generateMatrix(info); //Genero la matrice e ritorno il risultato
 }
 
-void movePlayers(GameSession* newSession, GameSession* oldSession) //Funzione per spostare i giocatori dalla sessione di gioco appena terminata a quella successiva
+bool nextGameSession(GameInfo* gameInfo) //Funzione per inizializzare la nuova sessione di gioco
 {
-    for(int i=0; i<MAX_CLIENTS; i++)
-    {
-        if(oldSession->players[i] != NULL)
-        {
-            newSession->players[newSession->numPlayers] = oldSession->players[i];
-            newSession->numPlayers++;
-        }
-    }
-}
+    if(gameInfo->currentSession == NULL) return false; //Failsafe
 
-bool nextGameSession(GameInfo* info) //Funzione per inizializzare la nuova sessione di gioco
-{
-    GameSession* oldSession = info->currentSession;
-    if(oldSession == NULL) return false;
-
-    //Alloco lo spazio per la struct e la inizializzo
-    GameSession* session = malloc(sizeof(GameSession));
-    session->timeToNextPhase = oldSession->timeToNextPhase;
-    session->gamePhase = oldSession->gamePhase;
-    session->numPlayers = 0;
-
-    movePlayers(session, oldSession);
-    free(oldSession);
-
-    info->round++;
-    info->currentSession = session; //Salvo il puntatore nella struct GameInfo
-
-    return generateMatrix(info); //Genero la matrice e ritorno il risultato
+    //Se passo da Paused a Playing genero la nuova matrice e resetto gli score
+    freeScoreArray(gameInfo->currentSession->scores);
+    gameInfo->currentSession->scores = createScoreArray();
+    return generateMatrix(gameInfo); //Genero la matrice e ritorno il risultato
 }
