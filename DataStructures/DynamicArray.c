@@ -51,11 +51,13 @@ ScoreList* createScoreArray()  //Funzione per creare e allocare un array dinamic
     array->size = 0;
     array->textCSV = NULL;
     array->scores = NULL;
+    array->winner = NULL;
     return array;
 }
 
 void addScoreToArray(ScoreList* array, char* playerName, int score) //Funzione per aggiungere un elemento all'array
 {
+    //Creo il nuovo score
     ScoreData newScoreData;
     newScoreData.score = score;
     newScoreData.playerName = NULL;
@@ -70,6 +72,7 @@ void freeScoreArray(ScoreList* array) //Funzione per liberare la memoria occupat
 {
     if(array == NULL) return;
     for(int i=0; i<array->size; i++) free(array->scores[i].playerName); //Libero la memoria occupata dal nome del player
+    if(array->winner != NULL) free(array->winner);
     free(array->scores);
     free(array->textCSV); //Libero la memoria occupata dal testo
     free(array); //Libero la memoria occupata dalla struct

@@ -4,7 +4,7 @@
 #include "../DataStructures/DynamicArray.h"
 
 //Massimo numero di player
-#define MAX_CLIENTS 2
+#define MAX_CLIENTS 3
 #define PAUSE_TIME 60
 
 //Enum per salvare la scelta della generazione della matrice
@@ -61,7 +61,9 @@ typedef struct GameInfo
     enum MatrixGen customMatrixType;
     char* matrixFile;
     char* dictionaryFile;
+
     TrieNode* dictionary;
+    StringList* matrix;
 
     int matrixLine;
     int seed;
@@ -76,6 +78,6 @@ bool initGameSession(GameInfo* info); //Funzione per inizializzare la sessione d
 Player* createPlayer(int fd_client); //Funzione per inizializzare un nuovo giocatore
 bool updateMatrixFile(GameInfo* info, char* newFile); //Funzione per aggiornare il file della matrice
 bool updateDictionaryFile(GameInfo* info, char* newFile); //Funzione per aggiornare il file del dizionario
-bool nextGameSession(GameInfo* info); //Funzione per inizializzare la nuova sessione di gioco
+void generateMatrix(GameInfo* gameInfo); //Funzione per generare la matrice di gioco
 bool findInMatrix(char matrix[MATRIX_SIZE][MATRIX_SIZE], char* word); //Funzione per cercare una parola nella matrice
 

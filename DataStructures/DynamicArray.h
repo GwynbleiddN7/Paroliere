@@ -20,6 +20,7 @@ typedef struct ScoreData{
 typedef struct ScoreList{
     int size;
     char* textCSV;
+    char* winner;
     ScoreData* scores;
 }ScoreList;
 

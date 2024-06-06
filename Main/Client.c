@@ -95,7 +95,8 @@ int main(int argc, char** argv)
         if(pid == 0) {
             close(input_pipe[0]); //Se non riesco a chiudere la pipe in lettura provo comunque a continuare il gioco perché non è un errore non compromettente
 
-            printf("\n[PROMPT PAROLIERE]-->");
+            printf("\n----------------------------\n");
+            printf("[PROMPT PAROLIERE]-->");
             fflush(stdout);
             getline(&input, &input_size, stdin); //getline() per prendere una riga da stdin
 
@@ -204,8 +205,7 @@ void* read_buffer(void* arg) //Funzione thread per leggere il buffer dal server
                 if(msg->length > 0) printf("%s\n", msg->data);
                 break;
             case MSG_PUNTI_FINALI:
-                printf("\nPunti totali: %ld\n", getNumber(msg->data));
-                pthread_cond_signal(&output_available);
+                printf("SCOREBOARD: \n%s\n", msg->data);
                 break;
             case MSG_PUNTI_PAROLA:
             {
@@ -219,6 +219,9 @@ void* read_buffer(void* arg) //Funzione thread per leggere il buffer dal server
             case MSG_TEMPO_PARTITA:
                 printf("Tempo rimanente alla fine della partita: %ld\n", getNumber(msg->data)); //Stampo il tempo rimanente
                 pthread_cond_signal(&output_available);
+                break;
+            case MSG_VINCITORE:
+                printf("\n\nVINCITORE: %s\n", msg->data); //Stampo il tempo rimanente
                 break;
             case MSG_TEMPO_ATTESA:
                 printf("Il gioco è in pausa\nTempo di attesa per la prossima partita: %ld\n", getNumber(msg->data)); //Il gioco è in pausa quindi trovo il tempo di attesa e lo stampo

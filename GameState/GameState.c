@@ -18,23 +18,36 @@ GameInfo *initGameInfo(char* newName, int newPort) //Funzione per inizializzare 
     GameInfo* gameInfo = malloc(sizeof(GameInfo));
 
     gameInfo->serverPort = newPort;
-    gameInfo->serverName = NULL;
-    copyString(&gameInfo->serverName, newName);
+    gameInfo->serverName = newName;
 
-    gameInfo->matrixLine = 0;
+    gameInfo->dictionaryFile = NULL;
+    gameInfo->dictionary= NULL;
     gameInfo->customMatrixType = Default;
     gameInfo->matrixFile = NULL;
-    gameInfo->dictionaryFile = NULL;
+    gameInfo->matrix = NULL;
+    gameInfo->matrixLine = 0;
 
     gameInfo->seed = time(0); //Seed di default
     gameInfo->gameDuration = DEFAULT_GAME_DURATION; //Durata game default
     gameInfo->currentSession = NULL;
-    gameInfo->dictionary= NULL;
 
     copyString(&gameInfo->dictionaryFile, DEFAULT_DICT_FILE); //Path dizionario default
 
     return gameInfo;
 }
+
+
+Player* createPlayer(int fd_client) //Funzione per inizializzare un nuovo giocatore
+{
+    Player* player = malloc(sizeof(Player));
+    player->socket_fd = fd_client; //Imposto il socket di comunicazione
+    player->foundWords = createStringArray(); //Inizializzo l'array di parole trovate
+    player->score = 0;
+    player->name = NULL;
+    player->bRegistered = false;
+    return player;
+}
+
 
 bool updateMatrixFile(GameInfo* info, char* newFile) //Funzione per aggiornare il file della matrice
 {
@@ -45,6 +58,7 @@ bool updateMatrixFile(GameInfo* info, char* newFile) //Funzione per aggiornare i
     return true;
 }
 
+
 bool updateDictionaryFile(GameInfo* info, char* newFile) //Funzione per aggiornare il file del dizionario
 {
     if(!regularFileExists(newFile)) return false; //Controllo che sia un file esistente e regolare
@@ -53,64 +67,6 @@ bool updateDictionaryFile(GameInfo* info, char* newFile) //Funzione per aggiorna
     return true;
 }
 
-bool loadMatrixFile(GameInfo* gameInfo) //Funzione per caricare la matrice dal file
-{
-    int bytes_read, fd;
-
-    //Controllo che il file esista e che sia di tipo corretto (già controllato precedentemente, solo per sicurezza)
-    if(!regularFileExists(gameInfo->matrixFile)) return false;
-
-    //Apro il file matrice in lettura con una chiamata di sistema
-    if(syscall_fails_get(fd, open(gameInfo->matrixFile, O_RDONLY))) return false;
-
-    char newLetter;
-    int rowIndex=0, colIndex=0, currentLine=0;
-    while(true) //Leggo un byte alla volta dal file (sizeof(char))
-    {
-        if(syscall_fails_get(bytes_read, read(fd, &newLetter, sizeof(char)))) return false;
-
-        if(bytes_read == 0) //Se arrivo a fine file ricomincio dalla prima riga
-        {
-            printf("EOF\n");
-            lseek(fd, 0, SEEK_SET);
-            gameInfo->matrixLine = 0;
-            currentLine = 0;
-        }
-
-        //Raggiungo la riga di file che devo leggere in base al round
-        if(currentLine < gameInfo->matrixLine) { //Se non sto alla riga corrispondente al round continuo a leggere
-            if(newLetter == '\n') currentLine++; //Se arrivo a fine riga incremento il counter
-            continue;
-        }
-        if(newLetter == '\n') break; //Se arrivo a fine riga interrompo la lettura
-        if(newLetter == ' '){
-            colIndex++; //Se leggo uno spazio incremento il numero di colonna
-            if(colIndex == MATRIX_SIZE) //Se sono alla quarta colonna letta ricomincio da 0 e incremento la riga di 1
-            {
-                colIndex = 0;
-                rowIndex++;
-            }
-            continue;
-        }
-        char letter = (char)tolower(newLetter);
-        gameInfo->currentSession->currentMatrix[rowIndex][colIndex] = letter; //Salvo la lettera letta nella posizione corrispondente della matrice
-        if(letter == 'q') lseek(fd, sizeof(char), SEEK_CUR); //Se leggo una 'q', salto una lettera per evitare di leggere la 'u'
-    }
-
-    if(syscall_fails(close(fd))) return false; //Provo a chiudere il file
-    return true;
-}
-
-Player* createPlayer(int fd_client) //Funzione per inizializzare un nuovo giocatore
-{
-    Player* player = malloc(sizeof(Player));
-    player->socket_fd = fd_client;
-    player->foundWords = createStringArray();
-    player->score = 0;
-    player->name = NULL;
-    player->bRegistered = false;
-    return player;
-}
 
 //Enum per le direzioni della ricerca
 enum Directions{
@@ -160,6 +116,7 @@ bool recursiveFindMatrix(char matrix[MATRIX_SIZE][MATRIX_SIZE], bool foundMatrix
     else return false;
 }
 
+
 bool findInMatrix(char matrix[MATRIX_SIZE][MATRIX_SIZE], char* word) //Funzione per cercare una parola nella matrice
 {
     if(strlen(word) == 0) return false; //Failsafe
@@ -177,11 +134,98 @@ bool findInMatrix(char matrix[MATRIX_SIZE][MATRIX_SIZE], char* word) //Funzione 
     return bFound;
 }
 
-bool generateMatrix(GameInfo* gameInfo) //Funzione per generare la matrice di gioco
+
+bool loadMatrixFile(GameInfo* gameInfo) //Funzione per caricare la matrice dal file
+{
+    if(gameInfo->customMatrixType != File) return true;
+
+    int bytes_read, fd;
+
+    //Controllo che il file esista e che sia di tipo corretto (già controllato precedentemente, solo per sicurezza)
+    if(!regularFileExists(gameInfo->matrixFile)) return false;
+
+    //Apro il file matrice in lettura con una chiamata di sistema
+    if(syscall_fails_get(fd, open(gameInfo->matrixFile, O_RDONLY))) return false;
+
+    gameInfo->matrix = createStringArray();
+
+    char* newWord = malloc(sizeof(char));
+    newWord[0] = '\0';
+
+    char newLetter;
+    int counterCheck=0;
+    while((bytes_read = read(fd, &newLetter, sizeof(char)))) //Leggo un byte alla volta dal file (sizeof(char))
+    {
+        if(bytes_read == -1) { //Se ho un errore esco
+            free(newWord);
+            return false;
+        }
+
+        if(newLetter == '\n') { //Se arrivo a fine riga incremento il counter
+            if(counterCheck != MATRIX_SIZE*MATRIX_SIZE-1) { //Devono esserci 16 elementi per riga, quindi 15 spazi non considerando l'ultimo che non è presente
+                free(newWord);
+                return false;
+            }
+            addStringToArray(gameInfo->matrix, newWord); //Aggiungo la parola completata alla lista
+            counterCheck = 0; //Resetto il counter di controllo
+
+            free(newWord); //Libero la memoria della parola
+            newWord = malloc(sizeof(char)); //Alloco il nuovo spazio per la successiva parola
+            newWord[0] = '\0'; //Assegno il \0 allo spazio allocato
+
+            continue;
+        }
+        if(newLetter == ' ') {
+            counterCheck++; //Se ho trovato uno spazio aumento il counter delle lettere
+            continue;
+        }
+        if(!isalpha(newLetter)) {
+            free(newWord); //Se ho trovato un carattere non valido libero la memoria ed esco
+            return false;
+        }
+        char letter = (char)tolower(newLetter); //Converto in minuscolo
+        if(letter == 'q') lseek(fd, sizeof(char), SEEK_CUR); //Se trovo una q salto di 1 per non leggere la u
+
+        int len = strlen(newWord);
+        newWord = realloc(newWord, (len + 2) * sizeof(char)); //Ri-alloco lo spazio per la nuova lettera e il \0
+        newWord[len] = letter;
+        newWord[len+1] = '\0';
+    }
+
+    //Se l'ultima riga del file non finisce con \n sono uscito dal while prima di salvare l'ultima parola quindi lo faccio qui
+    if(strlen(newWord) > 0){
+        if(counterCheck == MATRIX_SIZE*MATRIX_SIZE-1) addStringToArray(gameInfo->matrix, newWord);
+        else{
+            free(newWord);
+            return false;
+        }
+    }
+    free(newWord); //Libero lo spazio occupato dalla parola
+
+    if(syscall_fails(close(fd))) return false; //Provo a chiudere il file
+    return true;
+}
+
+
+void generateMatrix(GameInfo* gameInfo) //Funzione per generare la matrice di gioco
 {
     switch (gameInfo->customMatrixType) {
         case File:
-            return loadMatrixFile(gameInfo); //Se la flag indica File, carico dal file
+            if(gameInfo->matrixLine >= gameInfo->matrix->size) gameInfo->matrixLine = 0; //Se sono arrivato alla fine delle matrici disponibili ricomincio dalla prima
+
+            int rowIndex=0, colIndex=0;
+            for(int i=0; i < MATRIX_SIZE*MATRIX_SIZE; i++, colIndex++)
+            {
+                char letter = gameInfo->matrix->strings[gameInfo->matrixLine][i]; //Prendo la lettera attuale
+                if(i > 0 && i % MATRIX_SIZE == 0) //Ogni 4 lettere cambio riga e resetto la colonna
+                {
+                    colIndex = 0;
+                    rowIndex++;
+                }
+                gameInfo->currentSession->currentMatrix[rowIndex][colIndex] = letter; //Salvo la lettera letta nella posizione corrispondente della matrice
+            }
+            gameInfo->matrixLine++; //Aumento il counter della prossima riga da leggere
+            break;
         case Random: //Altrimenti genero random
         case Default:
             for(int i=0; i<MATRIX_SIZE; i++)
@@ -195,8 +239,8 @@ bool generateMatrix(GameInfo* gameInfo) //Funzione per generare la matrice di gi
             }
             break;
     }
-    return true;
 }
+
 
 bool initGameSession(GameInfo* info) //Funzione per inizializzare la sessione di gioco
 {
@@ -207,17 +251,7 @@ bool initGameSession(GameInfo* info) //Funzione per inizializzare la sessione di
     session->numPlayers = 0;
     session->gamePhase = Off;
     session->scores = NULL;
-
     info->currentSession = session; //Salvo il puntatore nella struct GameInfo
-    return generateMatrix(info); //Genero la matrice e ritorno il risultato
-}
 
-bool nextGameSession(GameInfo* gameInfo) //Funzione per inizializzare la nuova sessione di gioco
-{
-    if(gameInfo->currentSession == NULL) return false; //Failsafe
-
-    //Se passo da Paused a Playing genero la nuova matrice e resetto gli score
-    freeScoreArray(gameInfo->currentSession->scores);
-    gameInfo->currentSession->scores = createScoreArray();
-    return generateMatrix(gameInfo); //Genero la matrice e ritorno il risultato
+    return loadMatrixFile(info);
 }

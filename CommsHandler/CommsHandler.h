@@ -1,3 +1,4 @@
+//Comandi default
 #define MSG_OK 'K'
 #define MSG_ERR 'E'
 #define MSG_REGISTRA_UTENTE 'R'
@@ -7,7 +8,10 @@
 #define MSG_PAROLA 'W'
 #define MSG_PUNTI_FINALI 'F'
 #define MSG_PUNTI_PAROLA 'P'
-#define MSG_CLOSE_CLIENT 'C'
+
+//Comandi personali aggiunti
+#define MSG_CLOSE_CLIENT 'C' //Per gestire meglio la chiusura di un client
+#define MSG_VINCITORE 'V' //Per mandare un messaggio personalizzato con il nome del vincitore
 
 //Struttura messaggio
 typedef struct{

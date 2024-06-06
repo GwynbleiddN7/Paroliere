@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <arpa/inet.h>
 #include "Utility.h"
 
 bool regularFileExists(const char* file) //Funzione per controllare l'esistenza di un file
@@ -15,7 +16,8 @@ bool regularFileExists(const char* file) //Funzione per controllare l'esistenza 
 
 void exitWithMessage(char* message) //Funzione per terminare il programma con un messaggio
 {
-    printf("%s", message); //Scrivo un messaggio di errore
+    printf("%s\n", message); //Scrivo un messaggio di errore
+    fflush(stdout);
     exit(EXIT_FAILURE); //Esco
 }
 
@@ -39,4 +41,13 @@ bool validatePort(char* portString, int* portInt) //Funzione per validare la por
 {
     strToInt(portString, portInt); //Converto in intero
     return (*portInt >= 1024 && *portInt <= 65535); //Controllo che sia una porta nel range valido
+}
+
+bool validateAddr(char* addrInput, char** addrOutput) //Funzione per validare l'indirizzo
+{
+    struct sockaddr_in sa;
+    if(inet_pton(AF_INET, addrInput, &(sa.sin_addr)) != 0) copyString(addrOutput, addrInput); //Controllo se è un indirizzo IPV4 valido
+    else if(strcmp(addrInput, "localhost")) copyString(addrOutput, "127.0.0.1"); //Controllo se è localhost e lo converto in 127.0.0.1
+    else return false; //Altrimenti non è valido
+    return true;
 }
