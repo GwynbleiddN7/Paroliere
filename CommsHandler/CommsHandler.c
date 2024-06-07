@@ -76,16 +76,25 @@ void sendNumMessage(int fd, char type, long message) //Funzione per inviare un m
 
 Message* readMessage(int fd) //Funzione per leggere i campi di un messaggio
 {
-    //try_read() in caso di errore lettura, quindi probabile crash del client
+    //read_fails() in caso di errore lettura, quindi probabile crash del client
 
     int size;
-    try_read(fd, &size, sizeof(int)); //Leggo i primi sizeof(int) byte dal fd, che corrispondono al primo elemento della struct, cioè la lunghezza dei dati
+    if(read_fails(fd, &size, sizeof(int))) return NULL; //Leggo i primi sizeof(int) byte dal fd, che corrispondono al primo elemento della struct, cioè la lunghezza dei dati
 
     Message* msg = malloc(sizeof(int) + sizeof(char) + size); //Alloco lo spazio necessario per leggere tutto il messaggio
     msg->length = size; //Definisco la lunghezza dei dati nella struct
-
-    try_read(fd, &msg->type, sizeof(char)); //Leggo i secondi sizeof(char) byte dal fd, che corrispondo al tipo del messaggio
-    if(msg->length > 0) try_read(fd, &msg->data, size); //Leggo il resto del messaggio, cioè i dati allocati in coda
+    if(read_fails(fd, &msg->type, sizeof(char))) //Leggo i secondi sizeof(char) byte dal fd, che corrispondo al tipo del messaggio
+    {
+        free(msg);
+        return NULL;
+    };
+    if(msg->length > 0) { //Leggo il resto del messaggio, cioè i dati allocati in coda
+        if(read_fails(fd, &msg->data, size))
+        {
+            free(msg);
+            return NULL;
+        }
+    }
 
     return msg;
 }

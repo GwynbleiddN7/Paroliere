@@ -185,12 +185,12 @@ void timeTick(int signum) //Funzione callback per SIGALARM
         if(gameInfo->currentSession->gamePhase == Paused)
         {
             gameInfo->currentSession->gamePhase = Playing;
-            gameInfo->currentSession->timeToNextPhase = 10;//gameInfo->gameDuration;
+            gameInfo->currentSession->timeToNextPhase = gameInfo->gameDuration;
         }
         else
         {
             gameInfo->currentSession->gamePhase = Paused;
-            gameInfo->currentSession->timeToNextPhase = 10;//PAUSE_TIME;
+            gameInfo->currentSession->timeToNextPhase = PAUSE_TIME;
         }
 
         if(gameInfo->currentSession->gamePhase == Playing) generateMatrix(gameInfo); //Se il gioco è ricominciato creo la nuova matrice
@@ -446,7 +446,7 @@ void* player_read(void* playerArg) //Funzione del thred per leggere i messaggi d
             }
             case MSG_PUNTI_FINALI:
                 if(!player->bRegistered) sendTextMessage(player->socket_fd, MSG_ERR, "Devi registrarti per usare questo comando");
-                else if(gameInfo->currentSession->scores != NULL)
+                else if(gameInfo->currentSession->gamePhase == Paused)
                 {
                     sendTextMessage(player->socket_fd, MSG_PUNTI_FINALI, gameInfo->currentSession->scores->textCSV); //Invio la scoreboard attuale
                     sendCurrentGameInfo(player); //Invio anche le informazioni sul prossimo game
