@@ -26,52 +26,23 @@
 #define SCORE_IN 's'
 #define UNKNOWN_IN '?'
 
+//Definizione per la grafica
 #define INPUT_SPACE "\n\n---------------------------------------\n"
 
 //Dichiaro le funzioni
 bool decodeInput(char* string, char* cmd, char** arg); //Funzione per decodificare l'input dei comandi
 void printMatrix(char** matrix); //Funzione per stampare a schermo la matrice di gioco
-void* read_buffer(void* arg); //Funzione thread per leggere il buffer dal server
+void* readBuffer(void* arg); //Funzione thread per leggere il buffer dal server
+void* readInput(void* input); //Funzione thread per leggere l'input da tastiera
+void signalHandler(int signum); //Funzione callback per i segnali
 
+//Variabili di condizione per l'I/O
 pthread_mutex_t output_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t output_available = PTHREAD_COND_INITIALIZER;
 
-int client_fd;
-bool bGameGoing = true;
-
-volatile sig_atomic_t user_interrupted = 0;
-void signal_handler(int signum) {
-    if(signum == SIGUSR1) {
-        user_interrupted = 1;
-        pthread_exit(NULL);
-    }
-    else if(signum == SIGINT) {
-        shutdown(client_fd, SHUT_RDWR);
-    }
-}
-
-void* read_input(void* input)
-{
-    char** string_input = (char**)input;
-    struct sigaction new_action;
-    new_action.sa_handler = signal_handler;
-    sigemptyset(&new_action.sa_mask);
-    new_action.sa_flags = 0;
-    sigaction(SIGUSR1, &new_action, NULL);
-
-    printf("%s\n", INPUT_SPACE);
-    printf("[PROMPT PAROLIERE]-->");
-    fflush(stdout);
-
-    size_t input_size;
-    size_t bytes_read = getline(string_input, &input_size, stdin); //getline() per prendere una riga da stdin
-    printf("\n");
-    if(bytes_read <= 1) {
-        if(*string_input != NULL) free(*string_input);
-        *string_input = NULL;
-    }
-    pthread_exit(NULL);
-}
+int client_fd; //Canale di comunicazione client/server
+bool bGameGoing = true; //Stato del gioco
+volatile sig_atomic_t user_interrupted = 0; //Flag utilizzata nel callback dei segnali
 
 int main(int argc, char** argv)
 {
@@ -89,72 +60,74 @@ int main(int argc, char** argv)
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(port);
     server_addr.sin_addr.s_addr = inet_addr(addr);
-    free(addr);
+    free(addr); //A questo punto non ho più bisogno dell'indirizzo
 
-    if(syscall_fails_get(client_fd, socket(AF_INET, SOCK_STREAM, 0))) exitWithMessage("Errore creazione del socket");
+    if(syscall_fails_get(client_fd, socket(AF_INET, SOCK_STREAM, 0)))  //Creo il socket per la connessione al server
+        exitWithMessage("Errore creazione del socket");
 
-    //Chiamata di sistema per connettermi al server
+    //Provo a connettermi al server
     if(syscall_fails(connect(client_fd, (struct sockaddr *) &server_addr, sizeof(server_addr))))
     {
         close(client_fd); //Se non riesco a connettermi chiudo il socket senza controllare il risultato perché sto chiudendo il processo
         exitWithMessage("Impossibile connettersi al server"); //Chiudo il processo con un errore
     }
 
+    //Mask e handler per intercettare SIGINT
     struct sigaction new_action;
-    new_action.sa_handler = signal_handler;
+    new_action.sa_handler = signalHandler; //Handler personalizzato
     sigemptyset(&new_action.sa_mask);
-    new_action.sa_flags = 0;
+    new_action.sa_flags = 0; //Rimuovo la flag per ripristinare le chiamate di sistema
     sigaction(SIGINT, &new_action, NULL);
 
-    pthread_t* input_thread = malloc(sizeof(pthread_t));
+    pthread_t* input_thread = malloc(sizeof(pthread_t)); //Creo l'allocazione di memoria per condividere il TID del thread input
     pthread_t read_thread;
-    if (pthread_create(&read_thread, NULL, read_buffer, input_thread) != 0)
+    if (pthread_create(&read_thread, NULL, readBuffer, input_thread) != 0) //Creo il thread per la lettura dei messaggi dal server
     {
-        free(input_thread); //Libero la memoria appena allocata
+        free(input_thread); //Libero la memoria prima di uscire
         close(client_fd); //Se non riesco a creare il thread di lettura chiudo il socket senza controllare il risultato perché sto chiudendo il processo
         exitWithMessage("Errore creazione thread lettura"); //Chiudo il processo con un errore
     }
 
-    printf("Connesso al server! Scrivi 'aiuto' per sapere i comandi\n");
+    printf("Connesso al server! Scrivi 'aiuto' per sapere i comandi\n"); //Log
 
     while(bGameGoing) //Game Loop
     {
-        pthread_mutex_lock(&output_mutex);
+        pthread_mutex_lock(&output_mutex); //Acquisisco il lock dell'I/O
 
         char* input = NULL;
-        if (pthread_create(input_thread, NULL, read_input, &input) != 0)
+        if (pthread_create(input_thread, NULL, readInput, &input) != 0) //Creo il thread per la lettura da tastiera
         {
-            printf("Errore creazione thread lettura"); //Chiudo il processo con un errore
-            sendTextMessage(client_fd, MSG_CLOSE_CLIENT, NULL); //Richiedo la disconnessione dal gioco
+            printf("Errore creazione thread lettura"); //Se non riesco a creare il thread invio un messaggio
+            sendTextMessage(client_fd, MSG_CLOSE_CLIENT, NULL); //E richiedo la disconnessione dal gioco
             break;
         }
 
-        pthread_join(*input_thread, NULL);
+        pthread_join(*input_thread, NULL); //Attendo un input da tastiera
 
-        if(user_interrupted == 1){
-            if(input != NULL) free(input);
+        //Gestione arrivo messaggio asincrono dal server
+        if(user_interrupted == 1){ //Se il thread di input utente è stato interrotto da un SIGUSR1 proveniente dal thread di lettura dal server
+            if(input != NULL) free(input); //Provo a liberare la memoria per sicurezza
             printf("\n\n");
             pthread_cond_wait(&output_available, &output_mutex); //Attendo il completamento del risultato gestito dal thread di lettura
-            user_interrupted = 0;
-            pthread_mutex_unlock(&output_mutex);
-            continue; //Se sono uscito correttamente ho un input altrimenti il processo è stato interrotto e non leggo
+            user_interrupted = 0; //Resetto la flag
+            pthread_mutex_unlock(&output_mutex); //Sblocco il lock
+            continue; //Ripropongo il prompt all'utente
 
         }
 
-        if(input == NULL){
-            pthread_mutex_unlock(&output_mutex);
-            continue; //Se sono uscito correttamente ho un input altrimenti il processo è stato interrotto e non leggo
-
+        if(input == NULL){ //Se c'è stato un errore di lettura o se l'utente ha premuto solamente invio
+            pthread_mutex_unlock(&output_mutex); //Sblocco il lock
+            continue; //Ripropongo il prompt all'utente
         }
 
         char cmd;
         char* arg;
         if(!decodeInput(input, &cmd, &arg)) //Provo a decodificare l'input e assegno i dati a cmd e arg
         {
-            printf("Comando non valido, scrivi 'aiuto' per sapere i comandi possibili");
-            free(input);
-            pthread_mutex_unlock(&output_mutex);
-            continue;
+            printf("Comando non valido, scrivi 'aiuto' per sapere i comandi possibili"); //In caso di input errato
+            free(input); //Libero la memoria
+            pthread_mutex_unlock(&output_mutex); //Libero il lock
+            continue; //Ripropongo il prompt all'utente
         }
 
         switch (cmd) {
@@ -183,7 +156,7 @@ int main(int argc, char** argv)
                 pthread_cond_wait(&output_available, &output_mutex); //Attendo il completamento del risultato gestito dal thread di lettura
                 break;
             case SCORE_IN:
-                sendTextMessage(client_fd, MSG_PUNTI_FINALI, NULL); //Invio la parola da controllare
+                sendTextMessage(client_fd, MSG_PUNTI_FINALI, NULL); //Invio la richiesta per visualizzare la scoreboard
                 pthread_cond_wait(&output_available, &output_mutex); //Attendo il completamento del risultato gestito dal thread di lettura
                 break;
             case END_IN:
@@ -194,59 +167,85 @@ int main(int argc, char** argv)
                 printf("Comando non valido, scrivi 'aiuto' per sapere i comandi possibili"); //Failsafe per altri comandi
                 break;
         }
-        free(input);
-        pthread_mutex_unlock(&output_mutex);
+        free(input); //Libero la memoria del comando di input
+        pthread_mutex_unlock(&output_mutex); //Sblocco il lock
     }
     close(client_fd); //Chiudo il canale di comunicazione con il server (e di conseguenza il thread se ne accorgerà ed eseguirà una procedura di uscita)
     pthread_join(read_thread, NULL); //Attendo la chiusura del thread causata dalla chiusura del socket
     free(input_thread); //Libero la memoria allocata
 }
 
-void* read_buffer(void* arg) //Funzione thread per leggere il buffer dal server
+
+void* readInput(void* input) //Funzione thread per leggere l'input da tastiera
 {
-    pthread_t* thread_t = (pthread_t*)arg;
+    char** string_input = (char**)input;
+    struct sigaction new_action;
+    new_action.sa_handler = signalHandler;
+    sigemptyset(&new_action.sa_mask);
+    new_action.sa_flags = 0;
+    sigaction(SIGUSR1, &new_action, NULL);
+
+    printf("%s\n", INPUT_SPACE);
+    printf("[PROMPT PAROLIERE]-->");
+    fflush(stdout);
+
+    size_t input_size;
+    size_t bytes_read = getline(string_input, &input_size, stdin); //getline() per prendere una riga da stdin
+    printf("\n");
+    if(bytes_read <= 1) {
+        if(*string_input != NULL) free(*string_input);
+        *string_input = NULL;
+    }
+    pthread_exit(NULL);
+}
+
+
+void* readBuffer(void* arg) //Funzione thread per leggere il buffer dal server
+{
+    pthread_t* thread_t = (pthread_t*)arg; //Casting del parametro
     while(true)
     {
         Message* msg = readMessage(client_fd); //Leggo il messaggio
 
-        pthread_kill(*thread_t, SIGUSR1); //Interrompo la lettura da input, fermando il processo che si sta occupando della lettura
-        pthread_mutex_lock(&output_mutex); //Acquisisco il lock
+        pthread_kill(*thread_t, SIGUSR1); //Interrompo la lettura da input, inviando il segnale SIGUSR1 al thread che si occupata dell'input
+        pthread_mutex_lock(&output_mutex); //Acquisisco il lock dell'I/O
 
         if(msg == NULL) {
             //Nel caso di disconnessione con il server si ha un errore di lettura (ad esempio alla chiusura del socket)
-            bGameGoing = false;
-            pthread_cond_signal(&output_available);
-            pthread_mutex_unlock(&output_mutex);
-            pthread_exit(NULL);
+            bGameGoing = false; //Interrompo il gioco
+            pthread_cond_broadcast(&output_available); //In caso di errore avvenuto in precedenza sblocco eventuali task in attesa che andranno a terminare
+            pthread_mutex_unlock(&output_mutex); //Sblocco il lock
+            pthread_exit(NULL); //Esco dal thread
         }
 
         switch (msg->type) {
             case MSG_ERR:
-                printf("%s", msg->data);
-                pthread_cond_signal(&output_available);
+                printf("%s", msg->data); //Stampo il messaggio
+                pthread_cond_signal(&output_available); //Ultimo comando della catena quindi invio un segnale ai task in attesa
                 break;
             case MSG_OK:
-                printf("%s\n\n", msg->data);
+                printf("%s\n\n", msg->data); //Stampo il messaggio
                 break;
             case MSG_PUNTI_FINALI:
-                printf("SCOREBOARD: \n%s\n", msg->data);
+                printf("SCOREBOARD: \n%s\n", msg->data); //Visualizzo la scoreboard
                 break;
             case MSG_PUNTI_PAROLA:
             {
+                //Gestione del risultato della parola
                 long num = getNumber(msg->data);
                 if(num == 0) printf("Avevi già trovato questa parola!\n");
                 else printf("Parola trovata!\n");
                 printf("Punti: %ld", num);
-                pthread_cond_signal(&output_available);
+                pthread_cond_signal(&output_available); //Ultimo comando della catena quindi invio un segnale ai task in attesa
                 break;
             }
             case MSG_TEMPO_PARTITA:
             {
+                //Il gioco è in corso quindi trovo il tempo di rimanente e lo stampo
                 long seconds = getNumber(msg->data);
-                int minutes = 0;
-                while(seconds>=60 && (seconds = seconds - 60)) minutes++;
-                printf("Tempo rimanente alla fine della partita: %d min e %ld sec", minutes, seconds); //Stampo il tempo rimanente
-                pthread_cond_signal(&output_available);
+                int minutes = secondsToMinutes(&seconds);
+                printf("Tempo rimanente alla fine della partita: %ld secondi (%d min e %ld sec)", seconds+(minutes*60), minutes, seconds);
+                pthread_cond_signal(&output_available); //Ultimo comando della catena quindi invio un segnale ai task in attesa
                 break;
             }
             case MSG_VINCITORE:
@@ -254,21 +253,34 @@ void* read_buffer(void* arg) //Funzione thread per leggere il buffer dal server
                 break;
             case MSG_TEMPO_ATTESA:
             {
+                //Il gioco è in pausa quindi trovo il tempo di attesa e lo stampo
                 long seconds = getNumber(msg->data);
-                int minutes = 0;
-                while(seconds>=60 && (seconds = seconds - 60)) minutes++;
-                printf("Il gioco è in pausa\nTempo di attesa per la prossima partita: %d min e %ld sec", minutes, seconds); //Il gioco è in pausa quindi trovo il tempo di attesa e lo stampo
-                pthread_cond_signal(&output_available);
+                int minutes = secondsToMinutes(&seconds);
+                printf("Il gioco è in pausa\nTempo di attesa per la prossima partita: %ld secondi (%d min e %ld sec)", seconds+(minutes*60), minutes, seconds);
+                pthread_cond_signal(&output_available); //Ultimo comando della catena quindi invio un segnale ai task in attesa
                 break;
             }
             case MSG_MATRICE:
                 printMatrix(getMatrix(msg->data)); //Stampo la matrice
                 break;
         }
-        deleteMessage(msg);
-        pthread_mutex_unlock(&output_mutex);
+        deleteMessage(msg); //Elimino il messaggio
+        pthread_mutex_unlock(&output_mutex); //Sblocco il lock
     }
 }
+
+
+void signalHandler(int signum) //Funzione callback per i segnali
+{
+    if(signum == SIGUSR1) { //Se ricevo un SIGUSR1 devo interrompere la lettura da tastiera
+        user_interrupted = 1; //Setto la flag
+        pthread_exit(NULL); //Esco dal thread (segnale inviato e intercettato solamente al thread che si occupa della lettura da tastiera)
+    }
+    else if(signum == SIGINT) { //Se ricevo un SIGINT (CTRL+C)
+        shutdown(client_fd, SHUT_RDWR); //Interrompo il canale di comunicazione con il server in modo che il programma inizi la procedura di terminazione
+    }
+}
+
 
 bool decodeInput(char* string, char* cmd, char** arg) //Funzione per decodificare l'input dei comandi
 {
@@ -297,6 +309,7 @@ bool decodeInput(char* string, char* cmd, char** arg) //Funzione per decodificar
     return true; //Se passo i controlli ritorno true
 }
 
+
 void printMatrix(char** matrix) //Funzione per stampare a schermo la matrice di gioco
 {
     printf("GAMEBOARD:\n----------\n");
@@ -310,6 +323,8 @@ void printMatrix(char** matrix) //Funzione per stampare a schermo la matrice di 
         printf("\n"); //Cambio riga
     }
     printf("----------\n");
+
+    //Libero la memoria occupata dalla matrice
     for(int i=0; i<MATRIX_SIZE; i++) free(matrix[i]);
     free(matrix);
 }

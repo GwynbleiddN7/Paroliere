@@ -19,8 +19,7 @@
 #define ADDR_INDEX 1
 #define PORT_INDEX 2
 
-
-//Utilizzo questa struct per definire i possibili parametri con double-dash e il relativo valore per lo switch()
+//Utilizzo questa struct per definire i possibili parametri con double-dash e il relativo valore per lo switch
 static struct option long_options[] =
 {
     {"matrici", required_argument, NULL, 'm'},
@@ -31,13 +30,14 @@ static struct option long_options[] =
 };
 
 //Dichiaro le funzioni
-void* start_server(); //Funzione del thread per avviare il server
-void timeTick(int signum); //Funzione callback per SIGALARM
+void* startServer(); //Funzione del thread per avviare il server
+void timeTick(); //Funzione callback per SIGALARM
 void* scorer(); //Funzione del thread per gestire gli score
-void* handle_player(void* playerArg); //Funzione del thread per gestire una nuova connessione
-void* player_write(void* playerArg); //Funzione del thread per inviare in modo asincrono messaggi ai client
-void* player_read(void* playerArg); //Funzione del thred per leggere i messaggi dai client
+void* handlePlayer(void* playerArg); //Funzione del thread per gestire una nuova connessione
+void* playerWrite(void* playerArg); //Funzione del thread per inviare in modo asincrono messaggi ai client
+void* playerRead(void* playerArg); //Funzione del thred per leggere i messaggi dai client
 bool addPlayerToGame(Player* player); //Funzione per aggiungere un player al game
+bool addPlayerToLobby(Player* player); //Funzione per aggiungere un client alla lobby
 void removePlayerFromGame(Player* player); //Funzione per rimuovere un player dal game;
 void deletePlayer(Player* player); //Funzione per eliminare un giocatore
 void freeGameMem(); //Funzione per liberare la memoria occupata dalle strutture di gioco
@@ -45,6 +45,7 @@ void sendCurrentGameInfo(Player* player); //Funzione per inviare un messaggio co
 long getWordScore(char* word); //Funzione per calcolare il punteggio di una parola
 void getOptionalParameters(int argc, char** argv); //Funzione per leggere i parametri opzionali
 void exitBeforeStart(char* message); //Funzione per uscire liberando la memoria prima dell'inizio del game
+void exitServerThreadWithMessage(char* message); //Funzione per terminare il thread del server inducendo il processo di terminazione previsto del programma
 
 //Struct condivisa che contiene tutte le informazioni del gioco
 static GameInfo* gameInfo = NULL;
@@ -84,7 +85,7 @@ int main(int argc, char** argv)
 
     //Creazione di un thread che gestisce il server
     pthread_t server_thread;
-    if (pthread_create(&server_thread, NULL, start_server, NULL) != 0) {
+    if (pthread_create(&server_thread, NULL, startServer, NULL) != 0) {
         freeGameMem(); //Se non riesco a creare il thread libero la memoria e chiudo il processo
         exitWithMessage("Errore creazione thread server");
     }
@@ -104,15 +105,8 @@ int main(int argc, char** argv)
     freeGameMem(); //Libero tutta la memoria occupata dalle strutture di gioco
 }
 
-void exitServerThreadWithMessage(char* message)
-{
-    printf("%s\n", message); //Invio il messaggio di errore
-    fflush(stdout);
-    kill(getpid(), SIGINT); //Lascio gestire la chiusura all'intercept personalizzato del SIGINT
-    pthread_exit(NULL); //Esco dal thread
-}
 
-void* start_server() //Funzione del thread per avviare il server
+void* startServer() //Funzione del thread per avviare il server
 {
     struct sockaddr_in server_addr, client_addr;
 
@@ -151,17 +145,18 @@ void* start_server() //Funzione del thread per avviare il server
 
     alarm(1); //Avvio il gioco tramite il segnale SIGALARM intercettato da timeTick
 
+
     socklen_t client_addr_len = sizeof(client_addr);
     while(true){
         //Accetto una nuova connessione da un client
         int fd_client;
-        if(syscall_fails_get(fd_client,accept(gameInfo->serverSocket, (struct sockaddr *) &client_addr, &client_addr_len))) break;
+        if(syscall_fails_get(fd_client, accept(gameInfo->serverSocket, (struct sockaddr *) &client_addr, &client_addr_len))) break;
 
         //Creo un nuovo giocatore
         Player* player = createPlayer(fd_client);
 
         //Lascio gestire il player a un nuovo thread
-        if (pthread_create(&player->thread[Main], NULL, handle_player, (void*) player) != 0)
+        if (pthread_create(&player->thread[Main], NULL, handlePlayer, (void*) player) != 0)
         {
             //Se non riesco a creare un thread per un client continuo a giocare ma avviso con un errore e libero la memoria del player
             freeStringArray(player->foundWords);
@@ -173,7 +168,7 @@ void* start_server() //Funzione del thread per avviare il server
 }
 
 
-void timeTick(int signum) //Funzione callback per SIGALARM
+void timeTick() //Funzione callback per SIGALARM
 {
     if(gameInfo == NULL || gameInfo->currentSession == NULL) return;
     if(gameInfo->currentSession->gamePhase == Off) return;
@@ -195,10 +190,9 @@ void timeTick(int signum) //Funzione callback per SIGALARM
 
         if(gameInfo->currentSession->gamePhase == Playing) generateMatrix(gameInfo); //Se il gioco è ricominciato creo la nuova matrice
 
-        //Creo il thread che si occupa di gestire gli score
         pthread_t scorer_thread;
-        pthread_create(&scorer_thread, NULL, scorer, NULL);
-        pthread_join(scorer_thread, NULL);
+        pthread_create(&scorer_thread, NULL, scorer, NULL); //Creo il thread che si occupa di gestire gli score
+        pthread_join(scorer_thread, NULL); //Attendo che finisca di gestire gli score
 
         if(gameInfo->currentSession->gamePhase == Playing) //Se il gioco è ricominciato resetto gli score dopo che il thread scorer ha terminato il suo lavoro
         {
@@ -252,10 +246,11 @@ void* scorer() //Funzione del thread per gestire gli score
         }
     }
 
-    int lastScore = 0;
-    bool bIsEven = gameInfo->currentSession->scores->size > 1;
+    int lastScore = 0; //Variabile per controllare se la partita è patta
+    bool bIsEven = gameInfo->currentSession->scores->size > 1; //Se c'è solo un giocatore non può essere patta
     for(int i=0; i < gameInfo->currentSession->scores->size; i++)
     {
+        //Controllo se la partita è patta
         if(gameInfo->currentSession->scores->scores[i].score != lastScore) bIsEven = false;
         lastScore = gameInfo->currentSession->scores->scores[i].score;
 
@@ -276,6 +271,7 @@ void* scorer() //Funzione del thread per gestire gli score
         free(newScoreLine); //Libero la stringa temporanea
     }
 
+    //Scelta del vincitore
     if(bIsEven)
         copyString(&gameInfo->currentSession->scores->winner, "PARI");
     else if(gameInfo->currentSession->scores->size > 0)
@@ -290,12 +286,12 @@ void* scorer() //Funzione del thread per gestire gli score
 }
 
 
-void* handle_player(void* playerArg) //Funzione del thread per gestire una nuova connessione
+void* handlePlayer(void* playerArg) //Funzione del thread per gestire una nuova connessione
 {
     Player* player = (Player*) playerArg; //Casting del parametro a Player*
 
-    pthread_create(&player->thread[Read], NULL, player_read, playerArg); //Creo il thread che si occupa di gestire i messaggi sincroni con il client
-    pthread_create(&player->thread[Write], NULL, player_write, playerArg); //Creo il thread che si occupa di inviare i messaggi asincroni al client
+    pthread_create(&player->thread[Read], NULL, playerRead, playerArg); //Creo il thread che si occupa di gestire i messaggi sincroni con il client
+    pthread_create(&player->thread[Write], NULL, playerWrite, playerArg); //Creo il thread che si occupa di inviare i messaggi asincroni al client
 
     pthread_join(player->thread[Read], NULL); //Attendo la chiusura del client di lettura messaggi
     player->bRegistered = false; //Se si chiude il thread di lettura il player non è più registrato
@@ -308,7 +304,7 @@ void* handle_player(void* playerArg) //Funzione del thread per gestire una nuova
 }
 
 
-void* player_write(void* playerArg) //Funzione del thread per inviare in modo asincrono messaggi ai client
+void* playerWrite(void* playerArg) //Funzione del thread per inviare in modo asincrono messaggi ai client
 {
     Player* player = (Player*) playerArg; //Casting del parametro a Player*
 
@@ -339,9 +335,14 @@ void* player_write(void* playerArg) //Funzione del thread per inviare in modo as
 }
 
 
-void* player_read(void* playerArg) //Funzione del thred per leggere i messaggi dai client
+void* playerRead(void* playerArg) //Funzione del thred per leggere i messaggi dai client
 {
     Player* player = (Player*) playerArg; //Casting del parametro a Player*
+    if(!addPlayerToLobby(player)) //Provo ad aggiungere il player alla lobby
+    {
+        sendTextMessage(player->socket_fd, MSG_ERR, "La lobby è piena, disconnessione in corso..."); //Provo ad avvisare il client se non ho già chiuso il socket
+        pthread_exit(NULL); //Esco dal thread
+    }
 
     //Game Loop
     while(true)
@@ -357,7 +358,7 @@ void* player_read(void* playerArg) //Funzione del thred per leggere i messaggi d
         if(gameInfo->currentSession->gamePhase == Off) //Nel caso in cui arrivi un messaggio mentre il server sta chiudendo (molto improbabile)
         {
             sendTextMessage(player->socket_fd, MSG_ERR, "Il gioco sta terminando"); //Provo ad avvisare il client se non ho già chiuso il socket
-            deleteMessage(msg);
+            deleteMessage(msg); //Elimino il messaggio
             continue;
         }
 
@@ -458,7 +459,7 @@ void* player_read(void* playerArg) //Funzione del thred per leggere i messaggi d
                 else sendCurrentGameInfo(player); //Se viene richiesta un matrice mando la matrice e/o il tempo di gioco/attesa
                 break;
             case MSG_CLOSE_CLIENT:
-                deleteMessage(msg);
+                deleteMessage(msg); //Elimino il messaggio
                 pthread_exit(NULL); //Esco dal thread
             default:
                 sendTextMessage(player->socket_fd, MSG_ERR, "Comando non valido"); //Se il messaggio non è valido invio un messaggio di errore
@@ -468,12 +469,33 @@ void* player_read(void* playerArg) //Funzione del thred per leggere i messaggi d
     }
 }
 
+bool addPlayerToLobby(Player* player) //Funzione per aggiungere un client alla lobby
+{
+    pthread_mutex_lock(&players_mutex); //Inizio della sezione critica con l'acquisizione di un lock
+
+    if(gameInfo->currentLobbySize >= LOBBY_SIZE) {
+        pthread_mutex_unlock(&players_mutex); //Sblocco il lock alla fine della sezione critica
+        return false;
+    }
+
+    for(int i=0; i<LOBBY_SIZE; i++)
+    {
+        if(gameInfo->lobby[i] == NULL) //Trovo la prima posizione libera nella lista della lobby
+        {
+            gameInfo->lobby[i] = player; //Assegno il puntatore di player alla posizione della lista
+            gameInfo->currentLobbySize++; //Incremento il numero di client nella lobby
+            break;
+        }
+    }
+    pthread_mutex_unlock(&players_mutex); //Sblocco il lock alla fine della sezione critica
+    return true;
+}
 
 bool addPlayerToGame(Player* player) //Funzione per aggiungere un player al game
 {
     pthread_mutex_lock(&players_mutex); //Inizio della sezione critica con l'acquisizione di un lock
 
-    while (gameInfo->currentSession->numPlayers >= MAX_CLIENTS) {
+    if(gameInfo->currentSession->numPlayers >= MAX_CLIENTS) {
         pthread_mutex_unlock(&players_mutex); //Sblocco il lock alla fine della sezione critica
         return false;
     }
@@ -492,15 +514,37 @@ bool addPlayerToGame(Player* player) //Funzione per aggiungere un player al game
 }
 
 
+void removePlayerFromLobby(Player* player) //Funzione per rimuovere un client dalla lobby
+{
+    pthread_mutex_lock(&players_mutex); //Inizio della sezione critica con l'acquisizione di un lock
+
+    for(int i=0; i<LOBBY_SIZE && gameInfo->currentLobbySize > 0; i++)
+    {
+        if(gameInfo->lobby[i] != NULL) //Per ogni player non NULL nella lista
+        {
+            if(gameInfo->lobby[i] == player) //Controllo che sia il player che cerco
+            {
+                gameInfo->lobby[i] = NULL; //Rendo disponibile lo slot
+                gameInfo->currentLobbySize--; //Decremento il numero di client nella lobby
+                break;
+            }
+        }
+    }
+
+    pthread_mutex_unlock(&players_mutex); //Sblocco il lock alla fine della sezione critica
+}
+
+
 void removePlayerFromGame(Player* player) //Funzione per rimuovere un player dal game
 {
+    if(!player->bRegistered) return; //Se devo eliminare un player che non si è ancora registrato non eseguo questa funzione
     pthread_mutex_lock(&players_mutex); //Inizio della sezione critica con l'acquisizione di un lock
 
     for(int i=0; i<MAX_CLIENTS && gameInfo->currentSession->numPlayers > 0; i++)
     {
         if(gameInfo->currentSession->players[i] != NULL) //Per ogni player non NULL nella lista
         {
-            if(gameInfo->currentSession->players[i] == player) //Controllo che abbia lo stesso nome di quello che cerco
+            if(gameInfo->currentSession->players[i] == player) //Controllo che sia il player che cerco
             {
                 gameInfo->currentSession->players[i] = NULL; //Rendo disponibile lo slot
                 gameInfo->currentSession->numPlayers--; //Decremento il numero di player in game
@@ -516,13 +560,14 @@ void removePlayerFromGame(Player* player) //Funzione per rimuovere un player dal
 void deletePlayer(Player* player) //Funzione per eliminare un giocatore
 {
     if(player == NULL) return; //Failsafe
-    if(gameInfo->currentSession->gamePhase != Off) { //Se devo rendere disponibile un nuovo slot (false quando viene chiamata da freeGameMem ~ non rischio di chiudere due volte il socket)
+    if(gameInfo->currentSession->gamePhase != Off) { //Se devo rendere disponibile un nuovo slot (false quando viene chiamata da freeGameMem ~ non rischio di chiudere due volte il socket e non spreco cicli inutili)
         pthread_detach(player->thread[Main]); //Se non sto chiudendo il server non ho bisogno di attendere che il thread principale si chiuda e posso far liberare la memoria automaticamente
+        removePlayerFromLobby(player); //Rimuovo il player dalla lobby
         removePlayerFromGame(player); //Se il game è in corso (quindi non sto chiudendo il server), rendo disponibile lo slot
         close(player->socket_fd); //Chiudo la connessione con il client del player in questione (se c'è un errore il socket è già chiuso o comunque procedo a liberare la memoria)
     }
+    if(player->name != NULL) free(player->name); //Libero la memoria occupata dal nome
     freeStringArray(player->foundWords); //Libero la memoria occupata dal Trie delle parole trovate
-    free(player->name); //Libero la memoria occupata dal nome
     free(player); //Libero la memoria occupata dalla struct
 }
 
@@ -532,8 +577,9 @@ void freeGameMem() //Funzione per liberare la memoria occupata dalle strutture d
     if(gameInfo == NULL) return; //Failsafe
     if(gameInfo->currentSession != NULL)
     {
-        for(int i=0; i<MAX_CLIENTS; i++) {
-            Player* player = gameInfo->currentSession->players[i];
+        //Prendo tutti i client connessi alla lobby
+        for(int i=0; i<LOBBY_SIZE; i++) {
+            Player* player = gameInfo->lobby[i];
             if(player == NULL) continue;
             //Chiudo la connessione con il client del player che induce la terminazione del thread (con shutdown mi assicuro che la read venga interrotta e quindi il thread interrotto)
             shutdown(player->socket_fd, SHUT_RDWR); //Non eseguo controlli sul risultato perché sto chiudendo il programma
@@ -607,8 +653,18 @@ void getOptionalParameters(int argc, char** argv) //Funzione per leggere i param
     if (optind != argc-2) exitBeforeStart("Parametri aggiuntivi non riconosciuti"); //Se trovo altri parametri interrompo
 }
 
+
 void exitBeforeStart(char* message) //Funzione per uscire liberando la memoria prima dell'inizio del game
 {
     freeGameMem();
     exitWithMessage(message);
+}
+
+
+void exitServerThreadWithMessage(char* message) //Funzione per terminare il thread del server inducendo il processo di terminazione previsto del programma
+{
+    printf("%s\n", message); //Invio il messaggio di errore
+    fflush(stdout);
+    kill(getpid(), SIGINT); //Lascio gestire la chiusura all'intercept personalizzato del SIGINT
+    pthread_exit(NULL); //Esco dal thread
 }

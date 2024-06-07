@@ -9,8 +9,8 @@
 #include "../Utility/Utility.h"
 #include "GameState.h"
 
-#define DEFAULT_DICT_FILE "Data/dizionario.txt"
-#define DEFAULT_GAME_DURATION 3
+#define DEFAULT_DICT_FILE "Data/dizionario.txt" //File dizionario default
+#define DEFAULT_GAME_DURATION 3*60 //3 minuti
 
 GameInfo *initGameInfo(char* newName, int newPort) //Funzione per inizializzare le info
 {
@@ -19,6 +19,9 @@ GameInfo *initGameInfo(char* newName, int newPort) //Funzione per inizializzare 
 
     gameInfo->serverPort = newPort;
     gameInfo->serverName = newName;
+
+    for(int i=0; i<LOBBY_SIZE; i++) gameInfo->lobby[i] = NULL;
+    gameInfo->currentLobbySize = 0;
 
     gameInfo->dictionaryFile = NULL;
     gameInfo->dictionary= NULL;

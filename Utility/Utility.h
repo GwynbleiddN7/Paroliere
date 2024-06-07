@@ -17,3 +17,4 @@ void copyString(char** dest, char* src); //Funzione per creare una stringa con i
 bool strToInt(char* src, int* out); //Funzione per convertire stringa in intero
 bool validatePort(char* portString, int* portInt); //Funzione per validare la porta
 bool validateAddr(char* addrInput, char** addrOutput); //Funzione per validare l'indirizzo
+int secondsToMinutes(long* seconds); //Funzione per convertire i secondi in minuti + secondi

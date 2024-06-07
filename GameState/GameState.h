@@ -5,6 +5,7 @@
 
 //Massimo numero di player
 #define MAX_CLIENTS 3
+#define LOBBY_SIZE (MAX_CLIENTS*2)
 #define PAUSE_TIME 60
 
 //Enum per salvare la scelta della generazione della matrice
@@ -32,43 +33,46 @@ enum ThreadFunction
 //Struct per il player
 typedef struct Player
 {
-    int socket_fd;
-    pthread_t thread[3];
-    bool bRegistered;
-    char* name;
-    int score;
-    StringList* foundWords;
+    int socket_fd; //Socket di connessione
+    pthread_t thread[3]; //Lista dei thread per ogni client (Main Read Write)
+    bool bRegistered; //Flag registrazione
+    char* name; //Nome
+    int score; //Punteggio attuale
+    StringList* foundWords; //Parole trovate
 } Player;
 
 //Struct per la sessione corrente di gioco
 typedef struct GameSession
 {
-    char currentMatrix[MATRIX_SIZE][MATRIX_SIZE];
-    Player* players[MAX_CLIENTS];
-    ScoreList* scores;
-    int numPlayers;
-    long timeToNextPhase;
-    enum GamePhase gamePhase;
+    char currentMatrix[MATRIX_SIZE][MATRIX_SIZE]; //Matrice di gioco
+    Player* players[MAX_CLIENTS]; //Giocatore registrati
+    int numPlayers; //Numero giocatori registrati
+    ScoreList* scores; //Punteggi
+    long timeToNextPhase; //Tempo di gioco rimasto
+    enum GamePhase gamePhase; //Fase di gioco
 } GameSession;
 
 //Struct per le informazioni base del gioco
 typedef struct GameInfo
 {
-    char* serverName;
-    int serverPort;
-    int serverSocket;
+    char* serverName; //Indirizzo server
+    int serverPort; //Porta di connessione
+    int serverSocket; //Socket di comunicazione
 
-    enum MatrixGen customMatrixType;
-    char* matrixFile;
-    char* dictionaryFile;
+    Player* lobby[LOBBY_SIZE]; //Lista dei client connessi al server (anche quelli ancora non registrati alla partita) -> Massimo consentito = doppio dei player totali
+    int currentLobbySize; //Numero di client connessi in totale alla lobby
 
-    TrieNode* dictionary;
-    StringList* matrix;
+    enum MatrixGen customMatrixType; //Tipo di generazione matrice
+    char* matrixFile; //File con le matrici
+    char* dictionaryFile; //File dizionario
 
-    int matrixLine;
-    int seed;
-    int gameDuration;
-    GameSession* currentSession;
+    TrieNode* dictionary; //Dizionario caricato in memoria
+    StringList* matrix; //Matrici caricate in memoria
+
+    int matrixLine; //Numero matrice da leggere
+    int seed; //Seed per il random
+    int gameDuration; //Durata delle partite
+    GameSession* currentSession; //Sessione corrente
 } GameInfo;
 
 
