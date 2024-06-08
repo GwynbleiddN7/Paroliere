@@ -46,7 +46,7 @@ volatile sig_atomic_t user_interrupted = 0; //Flag utilizzata nel callback dei s
 
 int main(int argc, char** argv)
 {
-    if(argc-1 != 2) exitWithMessage("Numero parametri non corretto"); //Controllo che i parametri in ingresso siano esattamente 2 (argc-1 per il nome file)
+    if(argc-1 != 2) exitWithMessage("Numero parametri non corretto (indirizzo e numero porta)"); //Controllo che i parametri in ingresso siano esattamente 2 (argc-1 per il nome file)
 
     in_addr_t addr;
     int port;
@@ -214,6 +214,7 @@ void* readBuffer(void* arg) //Funzione thread per leggere il buffer dal server
         if(msg == NULL) {
             //Nel caso di disconnessione con il server si ha un errore di lettura (ad esempio alla chiusura del socket)
             bGameGoing = false; //Interrompo il gioco
+            printf("Disconnessione dalla partita in corso...\n");
             pthread_cond_broadcast(&output_available); //In caso di errore avvenuto in precedenza sblocco eventuali task in attesa che andranno a terminare
             pthread_mutex_unlock(&output_mutex); //Sblocco il lock
             pthread_exit(NULL); //Esco dal thread

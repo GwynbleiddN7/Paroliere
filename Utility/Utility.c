@@ -59,8 +59,18 @@ in_addr_t getIPV4FromHostname(const char* hostname, in_addr_t* addrOutput) //Fun
     //Se ho trovato almeno un risultato
     struct sockaddr_in *sockAddr = (struct sockaddr_in *)result->ai_addr; //Prendo l'indirizzo
     *addrOutput = sockAddr->sin_addr.s_addr; //E prendo l'indirizzo nel formato che utilizzerò
-    //Libero la memoria allocata (NOTA: secondo valgrind e con riscontri sul web, sembra che la funzione non liberi tutta la memoria allocata da getaddrinfo e non ci sia altro modo di farlo!)
+
+
+    //Libero la memoria allocata
     freeaddrinfo(result);
+    /*
+        NOTA dalla relazione:
+        Dai test risulta un unico caso in cui valgrind rileva una porzione di
+        memoria non liberata. Dopo aver verificato attentamente che il codice scritto
+        liberasse correttamente la memoria allocata, una ricerca sul web ha portato alla
+        conclusione che la funzione di libreria apposita freeaddrinfo() di netdb.h
+        non liberi tutta la memoria allocata dalla funzione getaddrinfo(), e che non ci siano altri metodi per farlo.
+    */
     return true;
 }
 

@@ -8,6 +8,9 @@
 #define LOBBY_SIZE (MAX_CLIENTS*2)
 #define PAUSE_TIME 60
 
+//Variabile di condizione per gestire la lista di giocatori (condivisa con Server.c)
+extern pthread_mutex_t players_mutex;
+
 //Enum per salvare la scelta della generazione della matrice
 enum MatrixGen
 {
@@ -28,8 +31,8 @@ enum GamePhase
 enum ThreadFunction
 {
     Main,
-    Read,
-    Write
+    Sync,
+    Async
 };
 
 //Struct per il player
@@ -81,9 +84,16 @@ typedef struct GameInfo
 //Dichiaro le funzioni esposte
 GameInfo *initGameInfo(in_addr_t newAddr, int newPort); //Funzione per inizializzare le info
 bool initGameSession(GameInfo* info); //Funzione per inizializzare la sessione di gioco
-Player* createPlayer(int fd_client); //Funzione per inizializzare un nuovo giocatore
-bool updateMatrixFile(GameInfo* info, char* newFile); //Funzione per aggiornare il file della matrice
 bool updateDictionaryFile(GameInfo* info, char* newFile); //Funzione per aggiornare il file del dizionario
+bool updateMatrixFile(GameInfo* info, char* newFile); //Funzione per aggiornare il file della matrice
+bool loadMatrixFile(GameInfo* gameInfo); //Funzione per caricare la matrice dal file
 void generateMatrix(GameInfo* gameInfo); //Funzione per generare la matrice di gioco
-bool findInMatrix(char matrix[MATRIX_SIZE][MATRIX_SIZE], char* word); //Funzione per cercare una parola nella matrice
-
+bool findInMatrix(char matrix[MATRIX_SIZE][MATRIX_SIZE], char* word); //Funzione per cercare una parola nella
+Player* createPlayer(int fd_client); //Funzione per inizializzare un nuovo giocatore
+bool addPlayerToGame(GameInfo* gameInfo, Player* player); //Funzione per aggiungere un player al game
+bool addPlayerToLobby(GameInfo* gameInfo, Player* player); //Funzione per aggiungere un client alla lobby
+void removePlayerFromGame(GameInfo* gameInfo, Player* player); //Funzione per rimuovere un player dal game;
+void deletePlayer(GameInfo* gameInfo, Player* player); //Funzione per eliminare un giocatore
+void freeGameMem(GameInfo* gameInfo); //Funzione per liberare la memoria occupata dalle strutture di gioco
+void sendCurrentGameInfo(GameInfo* gameInfo, Player* player); //Funzione per inviare un messaggio con la matrice e/o i tempi di gioco/attesa
+long getWordScore(char* word); //Funzione per calcolare il punteggio di una parola
