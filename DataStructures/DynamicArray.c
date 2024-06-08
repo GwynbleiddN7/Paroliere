@@ -44,7 +44,7 @@ bool findStringInArray(StringList* array, char* word) //Funzione per cercare un 
     return false;
 }
 
-ScoreList* createScoreArray()  //Funzione per creare e allocare un array dinamico
+ScoreList* createScoreArray() //Funzione per creare e allocare un array dinamico
 {
     //Alloco la memoria necessaria e inizializzo l'array
     ScoreList* array = malloc(sizeof(ScoreList));
@@ -73,7 +73,7 @@ void freeScoreArray(ScoreList* array) //Funzione per liberare la memoria occupat
     if(array == NULL) return;
     for(int i=0; i<array->size; i++) free(array->scores[i].playerName); //Libero la memoria occupata dal nome del player
     if(array->winner != NULL) free(array->winner);
-    free(array->scores);
+    free(array->scores); //Libero la memoria occupata dalla lista dei punteggi
     free(array->textCSV); //Libero la memoria occupata dal testo
     free(array); //Libero la memoria occupata dalla struct
 }

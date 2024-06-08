@@ -1,14 +1,14 @@
-# Compiler
-CC = gcc
+# Compilatore
+CC = cc
 
-# Compiler flags
+# Flag per la compilazione
 CFLAGS = -Wall -g -pedantic -pthread
 
-# Executable files
+# File eseguibili finali
 SERVER_EXE = paroliere_srv
 CLIENT_EXE = paroliere_cl
 
-# Paths
+# Percorsi per ogni file sorgente
 SERVER = Main/Server
 CLIENT = Main/Client
 TRIE = DataStructures/Trie
@@ -17,30 +17,30 @@ UTILITY = Utility/Utility
 COMMS = CommsHandler/CommsHandler
 GAMESTATE = GameState/GameState
 
-# Source files
+# Insieme dei file sorgente .c
 SRCS = $(SERVER).c $(CLIENT).c $(TRIE).c $(ARRAY).c $(UTILITY).c $(COMMS).c $(GAMESTATE).c
 
-# Object files
+# Insieme dei file oggetto .o
 OBJS = $(SRCS:.c=.o)
 
-# Targets
+# Unico target di compilazione default
 all: $(SERVER_EXE) $(CLIENT_EXE)
 
-# Rule to link object files to create the server executable
+# Compilazione del Server con i relativi file oggetto da legare [$0 = target, $^ = lista dei prerequisiti]
 $(SERVER_EXE):  $(SERVER).o $(TRIE).o $(ARRAY).o $(UTILITY).o $(COMMS).o $(GAMESTATE).o
 	$(CC) $(CFLAGS) -o $@ $^
 
-# Rule to link object files to create the client executable
+# Compilazione del Client con i relativi file oggetto da legare [$0 = target, $^ = lista dei prerequisiti]
 $(CLIENT_EXE): $(CLIENT).o $(UTILITY).o $(COMMS).o
 	$(CC) $(CFLAGS) -o $@ $^
 
-# Pattern rule to compile source files into object files
+# Pattern per compilare i file .c nei relativi file .c [$0 = target, $< = primo elemento della lista dei prerequisiti]
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Clean target to remove object files and executables
+# Pulizia dei file di compilazione
 clean:
 	rm -f $(OBJS) $(SERVER_EXE) $(CLIENT_EXE)
 
-# Phony targets
+# Target Phony
 .PHONY: all clean

@@ -63,7 +63,7 @@ void sendTextMessage(int fd, const char type, const void* data) //Funzione per i
     void* msg;
     int msg_size = buildTextMsg(&msg, type, data); //Creo il messaggio di testo
     write(fd, msg, msg_size); //Invio il messaggio attraverso il fd (eventuali errori nel canale di comunicazione vengono gestiti dalla read)
-    deleteMessage(msg);
+    deleteMessage(msg); //Una volta inviato il messaggio libero la memoria
 }
 
 void sendNumMessage(int fd, char type, long message) //Funzione per inviare un messaggio numerico tramite un file descriptor
@@ -71,7 +71,7 @@ void sendNumMessage(int fd, char type, long message) //Funzione per inviare un m
     void* msg;
     int msg_size = buildNumMsg(&msg, type, message); //Creo il messaggio numerico
     write(fd, msg, msg_size); //Invio il messaggio attraverso il fd (eventuali errori nel canale di comunicazione vengono gestiti dalla read)
-    deleteMessage(msg);
+    deleteMessage(msg); //Una volta inviato il messaggio libero la memoria
 }
 
 Message* readMessage(int fd) //Funzione per leggere i campi di un messaggio
@@ -85,13 +85,15 @@ Message* readMessage(int fd) //Funzione per leggere i campi di un messaggio
     msg->length = size; //Definisco la lunghezza dei dati nella struct
     if(read_fails(fd, &msg->type, sizeof(char))) //Leggo i secondi sizeof(char) byte dal fd, che corrispondo al tipo del messaggio
     {
-        free(msg);
+        //Se fallisce libero la memoria e ritorno NULL che verrà interpretato come errore
+        deleteMessage(msg);
         return NULL;
     };
     if(msg->length > 0) { //Leggo il resto del messaggio, cioè i dati allocati in coda
         if(read_fails(fd, &msg->data, size))
         {
-            free(msg);
+            //Se fallisce libero la memoria e ritorno NULL che verrà interpretato come errore
+            deleteMessage(msg);
             return NULL;
         }
     }

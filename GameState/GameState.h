@@ -16,6 +16,7 @@ enum MatrixGen
     File
 };
 
+//Enum per le diverse fai di gioco
 enum GamePhase
 {
     Off,
@@ -23,6 +24,7 @@ enum GamePhase
     Paused
 };
 
+//Enum per gestire i thread dei giocatori
 enum ThreadFunction
 {
     Main,
@@ -55,7 +57,7 @@ typedef struct GameSession
 //Struct per le informazioni base del gioco
 typedef struct GameInfo
 {
-    char* serverName; //Indirizzo server
+    in_addr_t serverAddr; //Indirizzo server
     int serverPort; //Porta di connessione
     int serverSocket; //Socket di comunicazione
 
@@ -77,7 +79,7 @@ typedef struct GameInfo
 
 
 //Dichiaro le funzioni esposte
-GameInfo *initGameInfo(char* newName, int newPort); //Funzione per inizializzare le info
+GameInfo *initGameInfo(in_addr_t newAddr, int newPort); //Funzione per inizializzare le info
 bool initGameSession(GameInfo* info); //Funzione per inizializzare la sessione di gioco
 Player* createPlayer(int fd_client); //Funzione per inizializzare un nuovo giocatore
 bool updateMatrixFile(GameInfo* info, char* newFile); //Funzione per aggiornare il file della matrice

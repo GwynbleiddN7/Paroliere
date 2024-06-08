@@ -1,17 +1,18 @@
 //Comandi default
-#define MSG_OK 'K'
-#define MSG_ERR 'E'
-#define MSG_REGISTRA_UTENTE 'R'
-#define MSG_MATRICE 'M'
-#define MSG_TEMPO_PARTITA 'T'
-#define MSG_TEMPO_ATTESA 'A'
-#define MSG_PAROLA 'W'
-#define MSG_PUNTI_FINALI 'F'
-#define MSG_PUNTI_PAROLA 'P'
+#define MSG_OK 'K' //messaggio di oK
+#define MSG_ERR 'E' //messaggio di Errore
+#define MSG_REGISTRA_UTENTE 'R' //messaggio per Registrare l'utente
+#define MSG_MATRICE 'M' //messaggio per ricevere/inviare la Matrice
+#define MSG_TEMPO_PARTITA 'T' //messaggio per il Tempo della partita attuale
+#define MSG_TEMPO_ATTESA 'A' //messaggio per il tempo di Attesa
+#define MSG_PAROLA 'W' //messaggio per mandare la parola (Word)
+#define MSG_PUNTI_FINALI 'F' //messaggio per ricevere i punti Finali
+#define MSG_PUNTI_PAROLA 'P' //messaggio per ricevere i punti della Parola indovinata
 
 //Comandi personali aggiunti
-#define MSG_CLOSE_CLIENT 'C' //Per gestire meglio la chiusura di un client
-#define MSG_VINCITORE 'V' //Per mandare un messaggio personalizzato con il nome del vincitore
+#define MSG_CLOSE_CLIENT 'C' //messaggio per gestire meglio la chiusura di un Client
+#define MSG_VINCITORE 'V' //messaggio per mandare un messaggio personalizzato con il nome del Vincitore
+#define MSG_PUNTI_PERSONALI 'G' //messaggio per far ricevere al client i punti personali durante il Game
 
 //Struttura messaggio
 typedef struct{

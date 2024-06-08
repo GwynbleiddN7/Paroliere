@@ -6,19 +6,21 @@
 #include <stdbool.h>
 #include <time.h>
 #include <ctype.h>
+#include <arpa/inet.h>
 #include "../Utility/Utility.h"
 #include "GameState.h"
 
+#define ITALIAN_LETTERS "abcdefghilmnopqrstuvz" //Lettere italiane
 #define DEFAULT_DICT_FILE "Data/dizionario.txt" //File dizionario default
-#define DEFAULT_GAME_DURATION 3*60 //3 minuti
+#define DEFAULT_GAME_DURATION 3*60 //3 minuti in secondi
 
-GameInfo *initGameInfo(char* newName, int newPort) //Funzione per inizializzare le info
+GameInfo *initGameInfo(in_addr_t newAddr, int newPort) //Funzione per inizializzare le info
 {
-    //Inizializzo la struct con le informazioni di Default
+    //Alloco la memoria per la struct e la inizializzo con valori di default o temporanei
     GameInfo* gameInfo = malloc(sizeof(GameInfo));
 
     gameInfo->serverPort = newPort;
-    gameInfo->serverName = newName;
+    gameInfo->serverAddr = newAddr;
 
     for(int i=0; i<LOBBY_SIZE; i++) gameInfo->lobby[i] = NULL;
     gameInfo->currentLobbySize = 0;
@@ -42,7 +44,7 @@ GameInfo *initGameInfo(char* newName, int newPort) //Funzione per inizializzare 
 
 Player* createPlayer(int fd_client) //Funzione per inizializzare un nuovo giocatore
 {
-    Player* player = malloc(sizeof(Player));
+    Player* player = malloc(sizeof(Player)); //Alloco la memoria per il giocatore
     player->socket_fd = fd_client; //Imposto il socket di comunicazione
     player->foundWords = createStringArray(); //Inizializzo l'array di parole trovate
     player->score = 0;
@@ -150,7 +152,7 @@ bool loadMatrixFile(GameInfo* gameInfo) //Funzione per caricare la matrice dal f
     //Apro il file matrice in lettura con una chiamata di sistema
     if(syscall_fails_get(fd, open(gameInfo->matrixFile, O_RDONLY))) return false;
 
-    gameInfo->matrix = createStringArray();
+    gameInfo->matrix = createStringArray(); //Inizializzo l'array
 
     char* newWord = malloc(sizeof(char));
     newWord[0] = '\0';
@@ -231,23 +233,25 @@ void generateMatrix(GameInfo* gameInfo) //Funzione per generare la matrice di gi
             break;
         case Random: //Altrimenti genero random
         case Default:
+        {
+            char* italianLetters = ITALIAN_LETTERS; //Lettere possibili
             for(int i=0; i<MATRIX_SIZE; i++)
             {
                 for(int j=0; j<MATRIX_SIZE; j++)
                 {
-                    //Genero una lettera (codice ascii) random nel range da ascii('a') a ascii('z')
-                    char randomLetter = (char)((rand() % TOTAL_LETTERS) + FIRST_LETTER);
-                    gameInfo->currentSession->currentMatrix[i][j] = randomLetter;
+                    char randomLetter = italianLetters[rand() % strlen(italianLetters)]; //Genero una lettera random presa dalla lista di lettere possibili
+                    gameInfo->currentSession->currentMatrix[i][j] = randomLetter; //Assegno la lettera alla posizione della matrice
                 }
             }
             break;
+        }
     }
 }
 
 
 bool initGameSession(GameInfo* info) //Funzione per inizializzare la sessione di gioco
 {
-    //Alloco lo spazio per la struct e la inizializzo
+    //Alloco lo spazio per la struct e la inizializzo temporaneamente
     GameSession* session = malloc(sizeof(GameSession));
     for(int i=0; i<MAX_CLIENTS; i++) session->players[i] = NULL;
     session->timeToNextPhase = 0;
@@ -256,5 +260,5 @@ bool initGameSession(GameInfo* info) //Funzione per inizializzare la sessione di
     session->scores = NULL;
     info->currentSession = session; //Salvo il puntatore nella struct GameInfo
 
-    return loadMatrixFile(info);
+    return loadMatrixFile(info); //Carico la matrice dal file se devo e ritorno il risultato dell'operazione
 }

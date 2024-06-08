@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <netdb.h>
 #include <arpa/inet.h>
 #include "Utility.h"
 
@@ -43,13 +44,35 @@ bool validatePort(char* portString, int* portInt) //Funzione per validare la por
     return (*portInt >= 1024 && *portInt <= 65535); //Controllo che sia una porta nel range valido
 }
 
-bool validateAddr(char* addrInput, char** addrOutput) //Funzione per validare l'indirizzo
+in_addr_t getIPV4FromHostname(const char* hostname, in_addr_t* addrOutput) //Funzione per tradurre un hostname in IPV4
+{
+    //Inizializzo le variabili addrinfo
+    struct addrinfo hints = {0}, *result = NULL;
+
+    //Imposto le proprietà come quelle del server e del client
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+
+    //Provo a tradurre l'hostname
+    if (getaddrinfo(hostname, NULL, &hints, &result) != 0) return false;
+
+    //Se ho trovato almeno un risultato
+    struct sockaddr_in *sockAddr = (struct sockaddr_in *)result->ai_addr; //Prendo l'indirizzo
+    *addrOutput = sockAddr->sin_addr.s_addr; //E prendo l'indirizzo nel formato che utilizzerò
+    //Libero la memoria allocata (NOTA: secondo valgrind e con riscontri sul web, sembra che la funzione non liberi tutta la memoria allocata da getaddrinfo e non ci sia altro modo di farlo!)
+    freeaddrinfo(result);
+    return true;
+}
+
+bool validateAddr(char* addrInput, in_addr_t* addrOutput) //Funzione per validare l'indirizzo
 {
     struct sockaddr_in sa;
-    if(inet_pton(AF_INET, addrInput, &(sa.sin_addr)) != 0) copyString(addrOutput, addrInput); //Controllo se è un indirizzo IPV4 valido
-    else if(strcmp(addrInput, "localhost")) copyString(addrOutput, "127.0.0.1"); //Controllo se è localhost e lo converto in 127.0.0.1
-    else return false; //Altrimenti non è valido
-    return true;
+    if(inet_pton(AF_INET, addrInput, &sa.sin_addr) != 0)
+    {
+        *addrOutput = sa.sin_addr.s_addr; //Controllo se è un indirizzo IPV4 valido
+        return true;
+    }
+    else return getIPV4FromHostname(addrInput, addrOutput); //Controllo se è un hostname valido e lo converto in IPV4
 }
 
 int secondsToMinutes(long* seconds) //Funzione per convertire i secondi in minuti + secondi

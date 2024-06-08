@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <arpa/inet.h>
 
 #define FIRST_LETTER 'a'
 #define TOTAL_LETTERS 26
@@ -16,5 +17,5 @@ void exitWithMessage(char* message); //Funzione per terminare il programma con u
 void copyString(char** dest, char* src); //Funzione per creare una stringa con il valore di un'altra
 bool strToInt(char* src, int* out); //Funzione per convertire stringa in intero
 bool validatePort(char* portString, int* portInt); //Funzione per validare la porta
-bool validateAddr(char* addrInput, char** addrOutput); //Funzione per validare l'indirizzo
+bool validateAddr(char* addrInput, in_addr_t* addrOutput); //Funzione per validare l'indirizzo
 int secondsToMinutes(long* seconds); //Funzione per convertire i secondi in minuti + secondi

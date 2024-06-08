@@ -48,10 +48,10 @@ int main(int argc, char** argv)
 {
     if(argc-1 != 2) exitWithMessage("Numero parametri non corretto"); //Controllo che i parametri in ingresso siano esattamente 2 (argc-1 per il nome file)
 
-    char* addr = NULL;
+    in_addr_t addr;
     int port;
     if(!validatePort(argv[PORT_INDEX], &port)) exitWithMessage("Numero di porta non corretto"); //Controllo con una funzione se la porta inserita è valida, se non lo è interrompo
-    if(!validateAddr(argv[ADDR_INDEX], &addr)) exitWithMessage("Indirizzo non valido"); //Controllo con una funzione se l'indirizzo è corretto, se non lo è interrompo
+    if(!validateAddr(argv[ADDR_INDEX], &addr)) exitWithMessage("Hostname o indirizzo IPV4 non valido"); //Controllo con una funzione se l'indirizzo è corretto, se non lo è interrompo
 
     //Creo il socket per connettermi al server
     struct sockaddr_in server_addr;
@@ -59,8 +59,7 @@ int main(int argc, char** argv)
     //Imposto i dati per la connessione
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(port);
-    server_addr.sin_addr.s_addr = inet_addr(addr);
-    free(addr); //A questo punto non ho più bisogno dell'indirizzo
+    server_addr.sin_addr.s_addr = addr;
 
     if(syscall_fails_get(client_fd, socket(AF_INET, SOCK_STREAM, 0)))  //Creo il socket per la connessione al server
         exitWithMessage("Errore creazione del socket");
@@ -102,7 +101,7 @@ int main(int argc, char** argv)
             break;
         }
 
-        pthread_join(*input_thread, NULL); //Attendo un input da tastiera
+        pthread_join(*input_thread, NULL); //Attendo la terminazione del thread (causata da un input ricevuto da tastiera o da un segnale)
 
         //Gestione arrivo messaggio asincrono dal server
         if(user_interrupted == 1){ //Se il thread di input utente è stato interrotto da un SIGUSR1 proveniente dal thread di lettura dal server
@@ -178,11 +177,13 @@ int main(int argc, char** argv)
 
 void* readInput(void* input) //Funzione thread per leggere l'input da tastiera
 {
-    char** string_input = (char**)input;
+    char** string_input = (char**)input; //Reference in cui salvare l'input
+
+    //Mask e handler per intercettare SIGUSR1
     struct sigaction new_action;
-    new_action.sa_handler = signalHandler;
+    new_action.sa_handler = signalHandler; //Handler personalizzato
     sigemptyset(&new_action.sa_mask);
-    new_action.sa_flags = 0;
+    new_action.sa_flags = 0; //Rimuovo la flag per ripristinare le chiamate di sistema
     sigaction(SIGUSR1, &new_action, NULL);
 
     printf("%s\n", INPUT_SPACE);
@@ -192,9 +193,9 @@ void* readInput(void* input) //Funzione thread per leggere l'input da tastiera
     size_t input_size;
     size_t bytes_read = getline(string_input, &input_size, stdin); //getline() per prendere una riga da stdin
     printf("\n");
-    if(bytes_read <= 1) {
-        if(*string_input != NULL) free(*string_input);
-        *string_input = NULL;
+    if(bytes_read <= 1) { //Se leggo solo \n o nessun carattere
+        if(*string_input != NULL) free(*string_input); //Libero la memoria se c'è qualcosa di allocato
+        *string_input = NULL; //Setto a NULL il valore così da poter gestirlo nel main
     }
     pthread_exit(NULL);
 }
@@ -229,6 +230,10 @@ void* readBuffer(void* arg) //Funzione thread per leggere il buffer dal server
             case MSG_PUNTI_FINALI:
                 printf("SCOREBOARD: \n%s\n", msg->data); //Visualizzo la scoreboard
                 break;
+            case MSG_PUNTI_PERSONALI:
+                printf("Punteggio attuale: %ld\n", getNumber(msg->data)); //Visualizzo il punteggio attuale
+                pthread_cond_signal(&output_available);
+                break;
             case MSG_PUNTI_PAROLA:
             {
                 //Gestione del risultato della parola
@@ -243,7 +248,7 @@ void* readBuffer(void* arg) //Funzione thread per leggere il buffer dal server
             {
                 //Il gioco è in corso quindi trovo il tempo di rimanente e lo stampo
                 long seconds = getNumber(msg->data);
-                int minutes = secondsToMinutes(&seconds);
+                int minutes = secondsToMinutes(&seconds); //Estraggo i minuti
                 printf("Tempo rimanente alla fine della partita: %ld secondi (%d min e %ld sec)", seconds+(minutes*60), minutes, seconds);
                 pthread_cond_signal(&output_available); //Ultimo comando della catena quindi invio un segnale ai task in attesa
                 break;
@@ -255,7 +260,7 @@ void* readBuffer(void* arg) //Funzione thread per leggere il buffer dal server
             {
                 //Il gioco è in pausa quindi trovo il tempo di attesa e lo stampo
                 long seconds = getNumber(msg->data);
-                int minutes = secondsToMinutes(&seconds);
+                int minutes = secondsToMinutes(&seconds); //Estraggo i minuti
                 printf("Il gioco è in pausa\nTempo di attesa per la prossima partita: %ld secondi (%d min e %ld sec)", seconds+(minutes*60), minutes, seconds);
                 pthread_cond_signal(&output_available); //Ultimo comando della catena quindi invio un segnale ai task in attesa
                 break;
@@ -285,7 +290,7 @@ void signalHandler(int signum) //Funzione callback per i segnali
 bool decodeInput(char* string, char* cmd, char** arg) //Funzione per decodificare l'input dei comandi
 {
     char* trimmed = strtok(string, "\n"); //Rimuovo lo \n salvato nel buffer dalla getline()
-    char* command = strtok(trimmed, " "); //Tokenizzo la stringa in parole
+    char* command = strtok(trimmed, " "); //Divido la stringa in parole, prendendo la prima
 
     //La prima parola corrisponde al comando e lo decodifico in un char per usarlo nello switch
     char c = UNKNOWN_IN;

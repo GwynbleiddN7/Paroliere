@@ -31,8 +31,8 @@ static TrieNode* addLeaf(TrieNode* node, char letter) //Funzione per provare ad 
 
     int asciiDiff = letter - FIRST_LETTER; //Calcolo offset relativo della lettera
     //Alloco lo spazio per una nuova lettera e ritorno il puntatore
-    if(node->nextLetters[asciiDiff] == NULL) node->nextLetters[asciiDiff] = createTrie();
-    return node->nextLetters[asciiDiff];
+    if(node->nextLetters[asciiDiff] == NULL) node->nextLetters[asciiDiff] = createTrie(); //Inizializzo una nuovo nodo
+    return node->nextLetters[asciiDiff]; //Ritorno il puntatore al nodo relativo alla lettera cercata
 }
 
 void freeTrie(TrieNode* head) //Funzione per liberare la memoria occupata dal Trie
@@ -42,7 +42,7 @@ void freeTrie(TrieNode* head) //Funzione per liberare la memoria occupata dal Tr
     {
         if(head->nextLetters[i] != NULL) freeTrie(head->nextLetters[i]); //Ricorsiva per liberare lo spazio più interno all'albero
     }
-    free(head);
+    free(head); //Libero la memoria
 }
 
 
@@ -69,7 +69,7 @@ TrieNode* loadDictionary(const char* path) //Funzione per caricare il dizionario
     if(syscall_fails_get(fd, open(path, O_RDONLY))) return NULL;
 
     TrieNode* head = createTrie(); //Creo il puntatore al root node del Trie
-    TrieNode* currentPointer = head;
+    TrieNode* currentPointer = head; //Puntatore temporaneo
     char newLetter;
     while( (bytes_read = read(fd, &newLetter, sizeof(char))) ) //Leggo una lettera alla volta e aggiorno l'albero
     {
@@ -82,14 +82,14 @@ TrieNode* loadDictionary(const char* path) //Funzione per caricare il dizionario
         currentPointer = addLeaf(currentPointer, newLetter); //Provo ad aggiungere una foglia se non esiste la lettera corrispondente
         if(currentPointer == NULL || bytes_read == 0) //Lettura lettera non valida, elimino il Trie ed esco dal ciclo
         {
-            freeTrie(head);
-            head = NULL;
+            freeTrie(head); //Libero la memoria dell'albero generato finora
+            head = NULL; //Imposto a NULL ed esco
             break;
         }
     }
 
-    //Chiudo il file con una chiamata di sistema
+    //Chiudo il file e se fallisce ritorno NULL
     if(syscall_fails(close(fd))) return NULL;
 
-    return head;
+    return head; //Ritorno albero generato o NULL in caso di errore
 }
