@@ -233,7 +233,7 @@ void* readBuffer(void* arg) //Funzione thread per leggere il buffer dal server
                 break;
             case MSG_PUNTI_PERSONALI:
                 printf("Punteggio attuale: %ld\n", getNumber(msg->data)); //Visualizzo il punteggio attuale
-                pthread_cond_signal(&output_available);
+                pthread_cond_signal(&output_available); //Ultimo comando della catena quindi invio un segnale ai task in attesa
                 break;
             case MSG_PUNTI_PAROLA:
             {

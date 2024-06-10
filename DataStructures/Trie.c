@@ -24,7 +24,7 @@ static TrieNode* findLetter(TrieNode* node, char letter) //Funzione per cercare 
     return node->nextLetters[asciiDiff]; //Ritorno il puntatore alla prossima lettera
 }
 
-static TrieNode* addLeaf(TrieNode* node, char letter) //Funzione per provare ad aggiungere una foglia al Trier
+static TrieNode* addLeaf(TrieNode* node, char letter) //Funzione per provare ad aggiungere una foglia al Trie
 {
     if(!isalpha(letter)) return NULL; //Controllo che sia una lettera
     letter = tolower(letter); //Converto la lettere in minuscolo per comodità

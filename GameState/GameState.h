@@ -92,7 +92,6 @@ bool findInMatrix(char matrix[MATRIX_SIZE][MATRIX_SIZE], char* word); //Funzione
 Player* createPlayer(int fd_client); //Funzione per inizializzare un nuovo giocatore
 bool addPlayerToGame(GameInfo* gameInfo, Player* player); //Funzione per aggiungere un player al game
 bool addPlayerToLobby(GameInfo* gameInfo, Player* player); //Funzione per aggiungere un client alla lobby
-void removePlayerFromGame(GameInfo* gameInfo, Player* player); //Funzione per rimuovere un player dal game;
 void deletePlayer(GameInfo* gameInfo, Player* player); //Funzione per eliminare un giocatore
 void freeGameMem(GameInfo* gameInfo); //Funzione per liberare la memoria occupata dalle strutture di gioco
 void sendCurrentGameInfo(GameInfo* gameInfo, Player* player); //Funzione per inviare un messaggio con la matrice e/o i tempi di gioco/attesa

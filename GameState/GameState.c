@@ -101,11 +101,12 @@ bool loadMatrixFile(GameInfo* gameInfo) //Funzione per caricare la matrice dal f
 
     gameInfo->matrix = createStringArray(); //Inizializzo l'array
 
+    //Inizializzo la nuova parola vuota con il null termination character
     char* newWord = malloc(sizeof(char));
     newWord[0] = '\0';
 
     char newLetter;
-    int counterCheck=0;
+    int counterCheck=0; //Counter per validare il numero di lettere in ogni riga del file
     while((bytes_read = read(fd, &newLetter, sizeof(char)))) //Leggo un byte alla volta dal file (sizeof(char))
     {
         if(bytes_read == -1) { //Se ho un errore esco
@@ -115,7 +116,7 @@ bool loadMatrixFile(GameInfo* gameInfo) //Funzione per caricare la matrice dal f
 
         if(newLetter == '\n') { //Se arrivo a fine riga incremento il counter
             if(counterCheck != MATRIX_SIZE*MATRIX_SIZE-1) { //Devono esserci 16 elementi per riga, quindi 15 spazi non considerando l'ultimo che non è presente
-                free(newWord);
+                free(newWord); //Libero lo spazio occupato e interrompo
                 return false;
             }
             addStringToArray(gameInfo->matrix, newWord); //Aggiungo la parola completata alla lista
@@ -140,8 +141,8 @@ bool loadMatrixFile(GameInfo* gameInfo) //Funzione per caricare la matrice dal f
 
         int len = strlen(newWord);
         newWord = realloc(newWord, (len + 2) * sizeof(char)); //Ri-alloco lo spazio per la nuova lettera e il \0
-        newWord[len] = letter;
-        newWord[len+1] = '\0';
+        newWord[len] = letter; //Aggiungo la lettera alla stringa nel nuovo spazio appena allocato
+        newWord[len+1] = '\0'; //Aggiungo il null termination character per delineare la fine della stringa
     }
 
     //Se l'ultima riga del file non finisce con \n sono uscito dal while prima di salvare l'ultima parola quindi lo faccio qui
@@ -313,7 +314,7 @@ bool addPlayerToGame(GameInfo* gameInfo, Player* player) //Funzione per aggiunge
 }
 
 
-void removePlayerFromLobby(GameInfo* gameInfo, Player* player) //Funzione per rimuovere un client dalla lobby
+void removePlayerFromGameAndLobby(GameInfo* gameInfo, Player* player) //Funzione per rimuovere un client dalla lobby
 {
     pthread_mutex_lock(&players_mutex); //Inizio della sezione critica con l'acquisizione di un lock
 
@@ -330,15 +331,7 @@ void removePlayerFromLobby(GameInfo* gameInfo, Player* player) //Funzione per ri
         }
     }
 
-    pthread_mutex_unlock(&players_mutex); //Sblocco il lock alla fine della sezione critica
-}
-
-
-void removePlayerFromGame(GameInfo* gameInfo, Player* player) //Funzione per rimuovere un player dal game
-{
-    if(!player->bRegistered) return; //Se devo eliminare un player che non si è ancora registrato non eseguo questa funzione
-    pthread_mutex_lock(&players_mutex); //Inizio della sezione critica con l'acquisizione di un lock
-
+    //Oltre a eliminarlo dalla lobby provo a eliminarlo dalla partita se si era registrato
     for(int i=0; i<MAX_CLIENTS && gameInfo->currentSession->numPlayers > 0; i++)
     {
         if(gameInfo->currentSession->players[i] != NULL) //Per ogni player non NULL nella lista
@@ -361,8 +354,7 @@ void deletePlayer(GameInfo* gameInfo, Player* player) //Funzione per eliminare u
     if(player == NULL) return; //Failsafe
     if(gameInfo->currentSession->gamePhase != Off) { //Se devo rendere disponibile un nuovo slot (false quando viene chiamata da freeGameMem ~ non rischio di chiudere due volte il socket e non spreco cicli inutili)
         pthread_detach(player->thread[Main]); //Se non sto chiudendo il server non ho bisogno di attendere che il thread principale si chiuda e posso far liberare la memoria automaticamente
-        removePlayerFromLobby(gameInfo, player); //Rimuovo il player dalla lobby
-        removePlayerFromGame(gameInfo, player); //Se il game è in corso (quindi non sto chiudendo il server), rendo disponibile lo slot
+        removePlayerFromGameAndLobby(gameInfo, player); //Rimuovo il player dalla lobby e dalla partita se è registrato
         close(player->socket_fd); //Chiudo la connessione con il client del player in questione (se c'è un errore il socket è già chiuso o comunque procedo a liberare la memoria)
     }
     if(player->name != NULL) free(player->name); //Libero la memoria occupata dal nome

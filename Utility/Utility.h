@@ -6,9 +6,13 @@
 #define PLAYER_NAME_SIZE 10
 #define MATRIX_SIZE 4
 
+//Macro per controllare se una chiamata di sistema (con errore -1) fallisce
 #define syscall_fails(syscall) (syscall == -1)
+//Macro per controllare se una chiamata di sistema (con errore -1) fallisce (con assegnazione del risultato ad una variabile)
 #define syscall_fails_get(val, syscall) ((val = syscall) == -1)
+//Macro che wrappa i parametri di una read e controlla se c'è stato un errore di lettura o una lettura vuota
 #define read_fails(arg1, arg2, arg3) (read(arg1, arg2, arg3) <= 0)
+//Macro che wrappa i parametri di una read e controlla se c'è stato un errore di lettura o una lettura vuota e aggiunge un return NULL per le funzioni che ritornano un puntatore, interrompendole
 #define try_read(arg1, arg2, arg3) if(read(arg1, arg2, arg3) <= 0) { return NULL; }
 
 //Dichiaro le funzioni esposte

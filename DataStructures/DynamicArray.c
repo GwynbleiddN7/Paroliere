@@ -30,7 +30,7 @@ void freeStringArray(StringList* array) //Funzione per liberare la memoria occup
         if(array->strings[i] == NULL) continue;
         free(array->strings[i]); //Libero la memoria occupata dall'elemento
     }
-    free(array->strings);
+    free(array->strings); //Libero la memoria occupata dalla lista di stringhe
     free(array); //Libero la memoria occupata dalla struct
 }
 
@@ -61,7 +61,7 @@ void addScoreToArray(ScoreList* array, char* playerName, int score) //Funzione p
     ScoreData newScoreData;
     newScoreData.score = score;
     newScoreData.playerName = NULL;
-    copyString(&newScoreData.playerName, playerName);
+    copyString(&newScoreData.playerName, playerName); //Copio il nome del giocatore
 
     array->size++; //Incremento la dimensione dell'array
     array->scores = realloc(array->scores, array->size * sizeof(ScoreData)); //Ri-alloco lo spazio necessario
@@ -72,7 +72,7 @@ void freeScoreArray(ScoreList* array) //Funzione per liberare la memoria occupat
 {
     if(array == NULL) return;
     for(int i=0; i<array->size; i++) free(array->scores[i].playerName); //Libero la memoria occupata dal nome del player
-    if(array->winner != NULL) free(array->winner);
+    if(array->winner != NULL) free(array->winner); //Libero la memoria occupata dal nome del vincitore
     free(array->scores); //Libero la memoria occupata dalla lista dei punteggi
     free(array->textCSV); //Libero la memoria occupata dal testo
     free(array); //Libero la memoria occupata dalla struct

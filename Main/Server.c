@@ -58,7 +58,7 @@ int main(int argc, char** argv)
     pthread_sigmask(SIG_SETMASK, &set, NULL);
 
     //Validazione parametri obbligatori
-    if(argc-1 < 2) exitWithMessage("Nome host e numero porta sono obbligatori"); //Controllo che ci siamo almeno i primi 2 parametri (-1 per il nome del file)
+    if(argc-1 < 2) exitWithMessage("Nome host e numero porta sono obbligatori"); //Controllo che ci siamo almeno i primi 2 parametri (argc-1 per il nome del file)
 
     in_addr_t addr;
     int port;
@@ -213,7 +213,7 @@ void* scorer() //Funzione del thread per gestire gli score
                 gameInfo->currentSession->players[i]->foundWords = createStringArray(); //Ricreo l'array per il prossimo round
                 gameInfo->currentSession->players[i]->score = 0; //Resetto lo score dei giocatori
             }
-            pthread_kill(gameInfo->currentSession->players[i]->thread[Async], SIGUSR1); //Invio ai thread dei player il segnale per avviare la lettura degli score o l'invio della matrice
+            pthread_kill(gameInfo->currentSession->players[i]->thread[Async], SIGUSR1); //Invio ai thread dei player il segnale per avviare la lettura dei punteggi o l'invio della matrice
         }
     }
 
@@ -333,7 +333,7 @@ void* playerAsync(void* playerArg) //Funzione del thread per inviare in modo asi
 }
 
 
-void* playerSync(void* playerArg) //Funzione del thred per leggere i messaggi dai client
+void* playerSync(void* playerArg) //Funzione del thread per leggere i messaggi dai client
 {
     Player* player = (Player*) playerArg; //Casting del parametro a Player*
     if(!addPlayerToLobby(gameInfo, player)) //Provo ad aggiungere il player alla lobby
@@ -468,8 +468,6 @@ void* playerSync(void* playerArg) //Funzione del thred per leggere i messaggi da
         deleteMessage(msg); //Libero la memoria occupata dal messaggio
     }
 }
-
-
 
 
 void getOptionalParameters(int argc, char** argv) //Funzione per leggere i parametri opzionali

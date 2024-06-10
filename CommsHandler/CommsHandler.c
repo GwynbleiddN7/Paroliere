@@ -15,8 +15,8 @@ int buildTextMsg(void** out, const char type, const void* data) //Funzione per c
     message->length = dataSize;
     message->type = type;
     if(dataSize != 0) {
-        memcpy(message->data, data, dataSize-1); //Copio i dati nello spazio di memoria che parte dalla locazione di message->data se sono presenti dati
-        message->data[dataSize-1] = '\0'; //Aggiungi il null termination character alla fine della stringa
+        memcpy(message->data, data, dataSize-1); //Copio i dati nello spazio di memoria che parte dalla locazione di message->data se sono presenti
+        message->data[dataSize-1] = '\0'; //Aggiunta del null termination character alla fine della stringa
     }
 
     *out = message; //Assegno a out il puntatore per il messaggio
@@ -76,7 +76,7 @@ void sendNumMessage(int fd, char type, long message) //Funzione per inviare un m
 
 Message* readMessage(int fd) //Funzione per leggere i campi di un messaggio
 {
-    //read_fails() in caso di errore lettura, quindi probabile crash del client
+    //read_fails() è una macro che controlla errori di lettura, che implicano il probabile crash del client
 
     int size;
     if(read_fails(fd, &size, sizeof(int))) return NULL; //Leggo i primi sizeof(int) byte dal fd, che corrispondono al primo elemento della struct, cioè la lunghezza dei dati
