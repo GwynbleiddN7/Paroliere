@@ -4,7 +4,7 @@ University "Laboratory II" Project written in C
 
 ## Documentation
 
-  [Relazione PDF](https://github.com/GwynbleiddN7/Paroliere/blob/main/Relazione.pdf)
+  [Relazione PDF](Relazione.pdf)
 
 ## License
 
